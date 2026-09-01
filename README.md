@@ -80,19 +80,30 @@ recognise.
 |---|---|---|---|---|
 | Chromium | chromium | `--user-data-dir` | `--class` | yes, against `hyprctl` |
 | Chrome, Brave, Brave Origin, Edge, Vivaldi | chromium | `--user-data-dir` | `--class` | same mechanism, not installed here |
-| Firefox, Zen, LibreWolf | firefox | `--profile` | `MOZ_APP_REMOTINGNAME` | mechanism is documented, **not tested** |
+| Zen | firefox | `--profile` | `MOZ_APP_REMOTINGNAME` | yes, against `hyprctl` |
+| Firefox, LibreWolf | firefox | `--profile` | `MOZ_APP_REMOTINGNAME` | same mechanism as Zen, not installed here |
 
-The two families need genuinely different handling, and the Firefox difference
-is not cosmetic:
+The two families set the window's app_id differently, and both paths were
+tested against a live Hyprland rather than inferred:
 
-- **Chromium** takes `--class=NAME`, which on Wayland becomes the app_id. Confirmed
-  on this machine: the window reports `class=chromium-…` with `xwayland: false`.
-- **Firefox ignores `--class` on Wayland** — it only ever set the X11 `WM_CLASS`.
-  The Wayland app_id comes from `MOZ_APP_REMOTINGNAME`, and that same variable
-  keys Firefox's remote-instance handoff. Without it, launching a second profile
-  while another is running hands the URL to the *running* instance — a work link
-  would silently open in the personal session. Setting it per client fixes the
-  window identity and the isolation together.
+- **Chromium** takes `--class=NAME`, which on Wayland becomes the app_id. A probe
+  window reported `class=browser-switcher-classprobe`, `xwayland: false`.
+- **Firefox-based browsers ignore `--class` on Wayland** — it only ever set the
+  X11 `WM_CLASS`. Launching Zen with `--class=zen-probe-class` still produced
+  app_id `zen`. `MOZ_APP_REMOTINGNAME` is what works: the same launch with
+  `MOZ_APP_REMOTINGNAME=zen-acme` produced app_id `zen-acme`. Without it every
+  Firefox-family client would share one app_id, so no per-client border colour
+  could match and `StartupWMClass` would be wrong for all of them.
+
+Two behaviours worth knowing, both measured rather than assumed:
+
+- **Isolation comes from `--profile`, not from the remoting name.** Two different
+  profile directories run as fully independent instances even when they share a
+  remoting name. The remoting name is about window identity, not about keeping
+  sessions apart.
+- **Re-launching a running client hands it the URL** instead of starting a second
+  copy, which is what `open` relies on to drop a link into the session you
+  already have open.
 
 Generated Hyprland rules also mirror whichever of Omarchy's two parity rules
 applies: chromium-based browsers get `tile = true`, firefox-based ones don't.
@@ -223,10 +234,11 @@ Early.
 
 - The CLI is tested, and the Chromium path is verified end to end against a
   running Hyprland.
-- The Firefox-family path (Firefox, Zen, LibreWolf) is written to the
-  documented mechanism but has not been run — no Firefox-based browser was
-  installed to test against. The `brave-origin` binary name is likewise a
-  guess at the package's entry point.
+- The Firefox-family path is verified with Zen, end to end: the plugin's own
+  `launch` produces a window whose app_id matches the `wmClass` its generated
+  Hyprland rule targets. Firefox and LibreWolf use the same mechanism but are
+  not installed here. The `brave-origin` binary name remains a guess at that
+  package's entry point.
 - The bar panel parses and its manifest validates, but it has not yet run
   through a session in a live shell.
 

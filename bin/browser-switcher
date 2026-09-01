@@ -163,23 +163,28 @@ def installed_browsers():
 def launch_argv(target, urls, new_window):
     """Build (argv, env) that opens `urls` in `target`.
 
-    The two families need genuinely different handling, and getting it wrong
-    on the Firefox side is not cosmetic:
+    The two families set the window's app_id differently, and both paths below
+    were verified against a live Hyprland rather than inferred.
 
-    Chromium takes `--class=NAME`, which on Wayland becomes the app_id
-    (verified against hyprctl: the window reports class=NAME, xwayland=False),
-    and treats each `--user-data-dir` as its own singleton.
+    Chromium takes `--class=NAME`, which on Wayland becomes the app_id (probe
+    window reported class=NAME, xwayland=False), and treats each
+    `--user-data-dir` as its own singleton.
 
-    Firefox ignores `--class` on Wayland — it only ever set the X11 WM_CLASS —
-    so the app_id comes from MOZ_APP_REMOTINGNAME instead. That same variable
-    also keys Firefox's remote-instance handoff, which is the important part:
-    without it, launching a second profile while another is running hands the
-    URL to the *running* instance, so a work link would silently open in the
-    personal session. Setting it per client fixes the app_id and the isolation
-    in one move.
+    Firefox ignores `--class` on Wayland — it only ever set the X11 WM_CLASS.
+    Tested with Zen: launching with `--class=zen-probe-class` still produced
+    app_id "zen". The app_id comes from MOZ_APP_REMOTINGNAME instead, which
+    does work (same test produced "zen-acme"). Without it every Firefox-family
+    client would share one app_id, so no per-client border colour could match
+    and StartupWMClass would be wrong for all of them.
+
+    Isolation itself comes from `--profile`, not from the remoting name:
+    two different profile directories run as independent instances even when
+    they share a remoting name. So the remoting name is about window identity,
+    not about keeping sessions apart.
 
     Opening a link deliberately omits --new-window so the client's existing
-    window is reused; launching from the app grid passes it.
+    window is reused — confirmed: relaunching a running client with a URL
+    hands it to that instance and spawns no new process.
     """
     key = target.get("browser", "chromium")
     spec = BROWSERS.get(key, BROWSERS["chromium"])
