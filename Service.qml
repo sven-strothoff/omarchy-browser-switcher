@@ -20,10 +20,17 @@ Item {
   property var settings: ({})
 
   readonly property string home: Quickshell.env("HOME")
-  // Deliberately absolute: the shell process does not necessarily inherit a
-  // PATH containing ~/.local/bin, and a silently missing CLI would look like
-  // an empty target list rather than a setup problem.
-  readonly property string cli: setting("cliPath", home + "/.local/bin/browser-switcher")
+
+  // Resolved relative to this file, so the CLI is found wherever the plugin
+  // happens to live. `omarchy plugin add` only clones and enables — it never
+  // runs an install script — so a plugin installed from the repository has
+  // nothing on PATH and no ~/.local/bin symlink. The copy shipped inside the
+  // plugin directory is the one thing guaranteed to be there.
+  readonly property string bundledCli: {
+    var url = String(Qt.resolvedUrl("bin/browser-switcher"))
+    return url.indexOf("file://") === 0 ? url.substring(7) : url
+  }
+  readonly property string cli: setting("cliPath", bundledCli)
 
   property var targets: []
   // Ready-made {label, value} pairs for the add-client dropdown; only
@@ -146,6 +153,14 @@ Item {
   function reorder(targetId, direction) { run(["reorder", targetId, direction], "reorder") }
 
   function addBrowser(browser) { run(["add-browser", browser], "add-browser") }
+
+  // Registers the router and takes over link handling. Deliberately a button
+  // the user presses rather than something the plugin does on load: taking
+  // over the default browser is a system-wide change and should be consented
+  // to, not discovered.
+  function makeDefault() { run(["install", "--set-default"], "install") }
+
+  readonly property bool busy: listProcess.running || actionProcess.running
 
   // Bar appearance lives in the widget's own shell.json entry, not in the
   // switcher's config, so this goes through omarchy rather than our CLI. The

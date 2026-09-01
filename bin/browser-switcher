@@ -1173,13 +1173,27 @@ def cmd_pick_color(args):
 
 # --------------------------------------------------------------------------- install
 
+def xdg_env():
+    """Environment for xdg-settings, with BROWSER removed.
+
+    `xdg-settings set default-web-browser` refuses outright while $BROWSER is
+    set ("$BROWSER is set and can't be changed with xdg-settings"), and Omarchy
+    always sets it to omarchy-launch-browser — so every call here would fail on
+    a stock system. Omarchy's own scripts strip it the same way for `get`.
+    """
+    env = dict(os.environ)
+    env.pop("BROWSER", None)
+    return env
+
+
 def is_default_browser():
     exe = shutil.which("xdg-settings")
     if not exe:
         return False
     try:
         proc = subprocess.run([exe, "get", "default-web-browser"],
-                              capture_output=True, text=True, timeout=10)
+                              capture_output=True, text=True, timeout=10,
+                              env=xdg_env())
     except (OSError, subprocess.SubprocessError):
         return False
     return proc.stdout.strip() == "browser-switcher.desktop"
@@ -1189,8 +1203,34 @@ def previous_default_file():
     return os.path.join(STATE_DIR, "previous-default-browser")
 
 
+def link_into_path():
+    """Symlink this script into ~/.local/bin, if nothing is there already.
+
+    A plugin installed with `omarchy plugin add` is only cloned — no install
+    script runs — so setup can happen entirely from the panel, and this is what
+    gives that user a working `browser-switcher` command in a terminal too. It
+    also pins a stable path for generated Exec= lines, which otherwise point
+    into the plugin directory and break if the plugin is removed.
+    """
+    source = os.path.realpath(os.path.abspath(sys.argv[0]))
+    dest = os.path.join(HOME, ".local", "bin", APP)
+    if os.path.realpath(dest) == source:
+        return
+    if os.path.exists(dest) or os.path.islink(dest):
+        warn(f"{dest} already exists; leaving it alone")
+        return
+    try:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        os.symlink(source, dest)
+    except OSError as exc:
+        warn(f"could not link {dest}: {exc}")
+        return
+    info(f"linked {dest} -> {source}")
+
+
 def cmd_install(args):
     cfg = load_config()
+    link_into_path()
     generate_router_desktop()
 
     if args.set_default:
@@ -1199,14 +1239,15 @@ def cmd_install(args):
             warn("xdg-settings not found — set the default browser manually")
         else:
             current = subprocess.run([exe, "get", "default-web-browser"],
-                                     capture_output=True, text=True).stdout.strip()
+                                     capture_output=True, text=True,
+                                     env=xdg_env()).stdout.strip()
             # Remember what was there so `uninstall` can put it back rather
             # than leaving the system with no default browser at all.
             if current and current != "browser-switcher.desktop":
                 os.makedirs(STATE_DIR, exist_ok=True)
                 write_atomic(previous_default_file(), current + "\n")
             proc = subprocess.run([exe, "set", "default-web-browser", "browser-switcher.desktop"],
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, env=xdg_env())
             if proc.returncode != 0:
                 warn(f"could not set default browser: {proc.stderr.strip()}")
             else:
@@ -1232,10 +1273,16 @@ def cmd_uninstall(args):
             pass
         if exe and restore:
             subprocess.run([exe, "set", "default-web-browser", restore],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, env=xdg_env())
             info(f"restored {restore} as the default browser")
         else:
             warn("was the default browser — set a new default manually")
+
+    # Only remove the PATH link if it still points at this program.
+    dest = os.path.join(HOME, ".local", "bin", APP)
+    if os.path.islink(dest) and APP in os.path.realpath(dest):
+        remove_quiet(dest)
+        info(f"removed {dest}")
 
     remove_quiet(ROUTER_DESKTOP)
     for target in cfg["targets"]:

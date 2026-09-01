@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Install the browser-switcher CLI and Omarchy shell plugin.
 #
+# Only needed for a git checkout. Installing with `omarchy plugin add` needs
+# none of this: the panel finds the CLI inside the plugin directory and offers
+# a button to register the link handler. This script exists so a checkout can
+# be symlinked in place for development.
+#
 # Every step is opt-in past the basics, because the interesting ones change
 # system-wide behaviour: --set-default takes over your link handling and
 # --hyprland edits hyprland.lua. Run it bare first and see what you get.

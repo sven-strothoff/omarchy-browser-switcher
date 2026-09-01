@@ -215,6 +215,7 @@ Panel {
     function previous(): string { switcher.cycle(-1); return "ok" }
     function use(id: string): string { switcher.use(id); return "ok" }
     function active(): string { return switcher.activeTarget ? switcher.activeTarget.id : "" }
+    function cliPath(): string { return switcher.cli }
   }
 
   // ------------------------------------------------------------- bar button
@@ -371,29 +372,52 @@ Panel {
             }
           }
 
-          // --------------------------------------------- setup / problems
-          Column {
+          // --------------------------------------------- errors and setup
+          Text {
+            textFormat: Text.PlainText
+            visible: text !== ""
             width: parent.width
-            spacing: Style.space(6)
-            visible: switcher.cliMissing || root.statusMessage !== "" || switcher.lastError !== ""
-              || (!switcher.cliMissing && !switcher.routerInstalled)
+            wrapMode: Text.WordWrap
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            color: root.urgent
+            text: {
+              if (switcher.cliMissing)
+                return "browser-switcher could not be found inside the plugin directory."
+              if (root.statusMessage !== "") return root.statusMessage
+              if (switcher.lastError !== "") return switcher.lastError
+              return ""
+            }
+          }
+
+          // Until the router is the system's link handler the switcher decides
+          // nothing, so this is the one piece of setup worth interrupting for —
+          // and worth being a button rather than a copyable command, since a
+          // plugin installed from the repository never ran an install script.
+          Column {
+            visible: !switcher.cliMissing && !switcher.isDefaultBrowser
+            width: parent.width
+            spacing: Style.space(8)
 
             Text {
               textFormat: Text.PlainText
               width: parent.width
               wrapMode: Text.WordWrap
+              text: "Links don't come here yet. Until Browser Switcher handles them, "
+                + "choosing a client changes nothing."
+              color: root.dim
               font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              color: root.statusMessage !== "" || switcher.lastError !== "" ? root.urgent : root.dim
-              text: {
-                if (switcher.cliMissing)
-                  return "browser-switcher is not installed. Run ./install.sh from the plugin repo."
-                if (root.statusMessage !== "") return root.statusMessage
-                if (switcher.lastError !== "") return switcher.lastError
-                if (!switcher.routerInstalled)
-                  return "Not registered as your link handler yet — run: browser-switcher install --set-default"
-                return ""
-              }
+              font.pixelSize: Style.font.caption
+            }
+
+            Button {
+              text: switcher.busy ? "Setting up…" : "Make this the default browser"
+              fontFamily: root.fontFamily
+              foreground: root.foreground
+              bordered: true
+              enabled: !switcher.busy
+              width: parent.width
+              onClicked: switcher.makeDefault()
             }
           }
 

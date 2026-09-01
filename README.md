@@ -170,18 +170,34 @@ nothing else.
 
 ## Install
 
+### From the plugin repository
+
+```bash
+omarchy plugin add <repo-url> --enable
+```
+
+That is the whole install. `omarchy plugin add` only clones the repo and
+enables the widget — it deliberately never runs an install script — so the
+plugin sets itself up from the panel instead:
+
+- The CLI is found inside the plugin directory, so nothing has to be on `PATH`
+  for the panel to work.
+- Until links actually route here, the panel shows a **Make this the default
+  browser** button. Pressing it registers the router, and links start arriving.
+  Nothing takes over link handling without that press.
+- That step also symlinks `browser-switcher` into `~/.local/bin`, so the
+  command works in a terminal too.
+
+### From a git checkout
+
+`install.sh` is a convenience for working on the plugin, not a requirement:
+
 ```bash
 git clone <this repo> ~/code/omarchy-browser-switcher
 cd ~/code/omarchy-browser-switcher
-./install.sh
-```
-
-Bare, that installs the CLI and plugin and changes nothing about how links
-currently open. Then opt in:
-
-```bash
+./install.sh                  # links the CLI and the plugin, changes nothing else
 ./install.sh --enable         # put the widget in the bar
-./install.sh --set-default    # actually route links through the switcher
+./install.sh --set-default    # route links through the switcher
 ./install.sh --all            # both
 ```
 
