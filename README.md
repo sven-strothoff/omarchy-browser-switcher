@@ -160,6 +160,26 @@ currently open. Then opt in:
 
 Requires `python3` and `imagemagick`.
 
+### Developing on it
+
+`install.sh` symlinks the checkout into `~/.config/omarchy/plugins/`, so edits
+land immediately — but the shell's plugin watcher does not follow the symlink,
+and `rescanPlugins` won't pick changes up through it either. After editing QML,
+reload with:
+
+```bash
+omarchy restart shell
+```
+
+The panel also answers on its own IPC target, which is handy while iterating and
+worth binding to a key:
+
+```bash
+omarchy-shell browser-switcher toggle      # open/close the picker
+omarchy-shell browser-switcher configure   # open straight into the manage view
+omarchy-shell browser-switcher next        # cycle to the next client
+```
+
 ## Using it
 
 **In the bar.** Left-click opens the picker; click a client to switch. Right-click
@@ -169,6 +189,15 @@ new window of the current client.
 
 **Configure** (the gear, or `c`) turns the same panel into the management view:
 rename in place, set a colour, choose a logo, delete, add a client.
+
+Picking a colour happens *inside* the panel — a swatch grid plus a hex field for
+an exact brand colour. That is not just a style choice: the panel is a
+layer-shell overlay with a fullscreen click-catcher beneath it, so any separate
+dialog window opens *behind* it and the first click aimed at that dialog hits the
+catcher and dismisses the panel instead. Anything that can be done in-panel is.
+
+Choosing a logo does need a real file dialog, so the panel closes itself first,
+hands over cleanly, and reopens on the manage view when you're done.
 
 **From the terminal**, which is the whole API:
 
@@ -239,8 +268,9 @@ Early.
   Hyprland rule targets. Firefox and LibreWolf use the same mechanism but are
   not installed here. The `brave-origin` binary name remains a guess at that
   package's entry point.
-- The bar panel parses and its manifest validates, but it has not yet run
-  through a session in a live shell.
+- The bar panel now runs in a live shell. The switch view, manage view, inline
+  colour picker and the file-dialog handoff have all been exercised on a real
+  desktop.
 
 `browser-switcher doctor` reports what is and isn't wired up.
 

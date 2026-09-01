@@ -115,11 +115,15 @@ Item {
   function launch(targetId) { run(["launch", targetId], "launch") }
   function rename(targetId, name) { run(["rename", targetId, name], "rename") }
   function remove(targetId) { run(["remove", targetId], "remove") }
-  // The pickers open a modal zenity dialog that stays up until the user
-  // chooses. They get their own process so a dialog left open on the other
-  // monitor cannot block switching, renaming or anything else.
+  function setColor(targetId, hex) { run(["set", targetId, "--color", hex], "set-color") }
+
+  // The file dialog is a normal toplevel window, while the panel is a
+  // layer-shell overlay: the dialog can never draw above it, and the panel's
+  // fullscreen dismiss layer eats the first click aimed at the dialog. The
+  // panel therefore closes itself before calling this and reopens afterwards,
+  // and the picker gets its own process so a dialog left open somewhere
+  // cannot block switching or renaming.
   function pickIcon(targetId) { runPicker(["pick-icon", targetId]) }
-  function pickColor(targetId) { runPicker(["pick-color", targetId]) }
 
   function runPicker(args) {
     if (pickerProcess.running) return

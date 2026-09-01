@@ -29,7 +29,25 @@ Panel {
   property int cursorIndex: 0
   property bool cursorActive: false
   property string pendingDeleteId: ""
+  property string editingColorId: ""
   property string statusMessage: ""
+  // Set while an external file dialog is up, so the panel knows to come back
+  // to the manage view once the dialog is done.
+  property bool resumeManageAfterPick: false
+
+  // One shared control height for every field, dropdown and button in the
+  // manage view. TextField sizes itself from font + padding (30px) while
+  // Dropdown uses controlHeight (28px), so left alone they sit a couple of
+  // pixels apart and the row reads as misaligned.
+  readonly property int controlH: Style.spacing.controlHeight
+
+  // Border colours, chosen to stay distinguishable from each other as a thin
+  // window border on both light and dark themes. The hex field below covers
+  // any exact brand colour that isn't here.
+  readonly property var palette: [
+    "#D20F39", "#E2571A", "#DF8E1D", "#7A9A01", "#2E9E4F", "#179299", "#1F7AB8",
+    "#3F5FCF", "#7A5CD0", "#8839EF", "#C2455F", "#7A6A5C", "#5B6B72", "#9AA5AB"
+  ]
 
   readonly property var targets: switcher.targets
   readonly property var active: switcher.activeTarget
@@ -58,6 +76,7 @@ Panel {
   function setManageMode(on) {
     manageMode = on
     pendingDeleteId = ""
+    editingColorId = ""
     statusMessage = ""
     cursorIndex = 0
     if (panelFlick) panelFlick.contentY = 0
@@ -90,7 +109,19 @@ Panel {
       Qt.callLater(function() { keyCatcher.forceActiveFocus() })
     } else {
       pendingDeleteId = ""
+      editingColorId = ""
     }
+  }
+
+  // Hand off to an external dialog cleanly. The panel is a layer-shell overlay
+  // with a fullscreen click-catcher under it, so a normal window like the file
+  // dialog opens *behind* it and the first click meant for the dialog hits the
+  // catcher instead — which is what made this feel broken. Closing first means
+  // there is nothing left to fight over, and we reopen where the user was.
+  function chooseIcon(targetId) {
+    resumeManageAfterPick = manageMode
+    close()
+    switcher.pickIcon(targetId)
   }
 
   Service {
@@ -103,9 +134,20 @@ Panel {
     function onActionFinished(action, ok, message) {
       if (!ok) {
         root.statusMessage = message
+        if (action === "pick" && root.resumeManageAfterPick) {
+          root.resumeManageAfterPick = false
+          root.open()
+          root.manageMode = true
+        }
         return
       }
       root.statusMessage = ""
+      if (action === "pick" && root.resumeManageAfterPick) {
+        root.resumeManageAfterPick = false
+        root.open()
+        root.manageMode = true
+        return
+      }
       if (action === "add") {
         addName.text = ""
         addName.forceActiveFocus()
@@ -119,6 +161,11 @@ Panel {
     function open(): void { root.open() }
     function close(): void { root.close() }
     function toggle(): void { root.toggle() }
+    function configure(): string {
+      root.open()
+      root.manageMode = true
+      return "ok"
+    }
     function next(): string { switcher.cycle(1); return "ok" }
     function previous(): string { switcher.cycle(-1); return "ok" }
     function use(id: string): string { switcher.use(id); return "ok" }
@@ -401,6 +448,10 @@ Panel {
               TextField {
                 id: addName
                 Layout.fillWidth: true
+                Layout.preferredHeight: root.controlH
+                Layout.alignment: Qt.AlignVCenter
+                verticalPadding: 0
+                verticalAlignment: TextInput.AlignVCenter
                 placeholderText: "Client name"
                 foreground: root.foreground
                 font.family: root.fontFamily
@@ -411,6 +462,9 @@ Panel {
               Dropdown {
                 id: addBrowser
                 Layout.preferredWidth: Style.space(110)
+                Layout.preferredHeight: root.controlH
+                Layout.alignment: Qt.AlignVCenter
+                rowHeight: root.controlH
                 showLabel: false
                 fontFamily: root.fontFamily
                 options: switcher.browserOptions
@@ -423,6 +477,8 @@ Panel {
                 tooltipText: "Add client"
                 foreground: root.foreground
                 fontFamily: root.fontFamily
+                size: root.controlH
+                Layout.alignment: Qt.AlignVCenter
                 enabled: addName.text.trim().length > 0
                 function commit() {
                   var name = addName.text.trim()
@@ -613,6 +669,7 @@ Panel {
     id: manageRow
     property var target: null
     readonly property bool confirming: manageRow.target && root.pendingDeleteId === manageRow.target.id
+    readonly property bool editingColor: manageRow.target && root.editingColorId === manageRow.target.id
 
     spacing: Style.space(4)
 
@@ -631,11 +688,14 @@ Panel {
       TextField {
         id: nameField
         Layout.fillWidth: true
+        Layout.preferredHeight: root.controlH
+        Layout.alignment: Qt.AlignVCenter
+        verticalPadding: 0
+        verticalAlignment: TextInput.AlignVCenter
         text: manageRow.target ? String(manageRow.target.name) : ""
         foreground: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
-        verticalPadding: Style.space(3)
         onAccepted: commit()
         onActiveFocusChanged: if (!activeFocus) commit()
 
@@ -648,25 +708,45 @@ Panel {
         }
       }
 
-      // Colour swatch doubles as the button that opens the colour picker.
-      Rectangle {
+      // The swatch is the button, and it opens the picker *inside* the panel.
+      // A colour chooser is a dozen swatches and a hex field; spawning a
+      // separate window for that meant the panel dismissed itself, the dialog
+      // opened underneath it, and the first click went nowhere.
+      Item {
         Layout.alignment: Qt.AlignVCenter
-        width: Style.space(18)
-        height: Style.space(18)
-        radius: Style.space(3)
-        color: root.targetColor(manageRow.target)
-        border.width: 1
-        border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
+        implicitWidth: root.controlH
+        implicitHeight: root.controlH
+
+        Rectangle {
+          anchors.centerIn: parent
+          width: Style.space(18)
+          height: Style.space(18)
+          radius: Style.space(3)
+          color: root.targetColor(manageRow.target)
+          border.width: manageRow.editingColor ? 2 : 1
+          border.color: manageRow.editingColor
+            ? root.foreground
+            : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
+        }
 
         MouseArea {
+          id: swatchMouse
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
-          onClicked: if (manageRow.target) switcher.pickColor(manageRow.target.id)
+          onClicked: {
+            if (!manageRow.target) return
+            if (manageRow.editingColor) {
+              root.editingColorId = ""
+            } else {
+              hexField.text = String(manageRow.target.color)
+              root.editingColorId = manageRow.target.id
+            }
+          }
 
           PanelToolTip {
-            visible: parent.containsMouse
-            text: "Choose border colour"
+            visible: swatchMouse.containsMouse && !manageRow.editingColor
+            text: "Border colour"
             fontFamily: root.fontFamily
           }
         }
@@ -677,8 +757,9 @@ Panel {
         tooltipText: "Choose logo"
         foreground: root.foreground
         fontFamily: root.fontFamily
+        size: root.controlH
         Layout.alignment: Qt.AlignVCenter
-        onClicked: if (manageRow.target) switcher.pickIcon(manageRow.target.id)
+        onClicked: if (manageRow.target) root.chooseIcon(manageRow.target.id)
       }
 
       PanelActionButton {
@@ -686,10 +767,100 @@ Panel {
         tooltipText: "Delete"
         foreground: manageRow.confirming ? root.urgent : root.foreground
         fontFamily: root.fontFamily
+        size: root.controlH
         Layout.alignment: Qt.AlignVCenter
         onClicked: {
           if (!manageRow.target) return
           root.pendingDeleteId = manageRow.confirming ? "" : manageRow.target.id
+        }
+      }
+    }
+
+    // Colour editor, expanded in place under its own row. Everything here is
+    // in-panel, so picking a colour never costs the panel its focus.
+    Column {
+      visible: manageRow.editingColor
+      width: manageRow.width
+      spacing: Style.space(6)
+      topPadding: Style.space(2)
+      bottomPadding: Style.space(4)
+
+      Grid {
+        columns: 7
+        spacing: Style.space(5)
+
+        Repeater {
+          model: root.palette
+
+          Rectangle {
+            required property string modelData
+            readonly property bool chosen:
+              manageRow.target
+              && String(manageRow.target.color).toUpperCase() === modelData.toUpperCase()
+
+            width: Style.space(22)
+            height: Style.space(22)
+            radius: Style.space(3)
+            color: modelData
+            border.width: chosen ? 2 : 0
+            border.color: root.foreground
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                if (!manageRow.target) return
+                switcher.setColor(manageRow.target.id, parent.modelData)
+                root.editingColorId = ""
+              }
+            }
+          }
+        }
+      }
+
+      RowLayout {
+        width: parent.width
+        spacing: Style.space(6)
+
+        TextField {
+          id: hexField
+          Layout.fillWidth: true
+          Layout.preferredHeight: root.controlH
+          Layout.alignment: Qt.AlignVCenter
+          verticalPadding: 0
+          verticalAlignment: TextInput.AlignVCenter
+          placeholderText: "#RRGGBB"
+          text: manageRow.target ? String(manageRow.target.color) : ""
+          foreground: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          onAccepted: applyHex()
+
+          // Accept what someone would actually paste: with or without the
+          // leading hash, in either case. The CLI normalises it again.
+          function applyHex() {
+            if (!manageRow.target) return
+            var v = text.trim().replace(/^#/, "")
+            if (!/^[0-9A-Fa-f]{6}$/.test(v)) {
+              text = String(manageRow.target.color)
+              return
+            }
+            switcher.setColor(manageRow.target.id, "#" + v.toUpperCase())
+            root.editingColorId = ""
+          }
+        }
+
+        Button {
+          text: "Set"
+          fontFamily: root.fontFamily
+          foreground: root.foreground
+          // Bordered so it reads as the commit action for the field beside it
+          // rather than as a stray label.
+          bordered: true
+          Layout.preferredHeight: root.controlH
+          Layout.alignment: Qt.AlignVCenter
+          onClicked: hexField.applyHex()
         }
       }
     }
