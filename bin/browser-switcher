@@ -72,6 +72,13 @@ ROUTER_DESKTOP = os.path.join(APPS_DIR, "browser-switcher.desktop")
 # browsers get a separate --user-data-dir (a real sandbox: separate cookies,
 # separate keyring entry, separate process), not a --profile-directory, which
 # shares far too much between "profiles".
+# The set Omarchy can install (`omarchy install browser <...>`) plus the
+# preinstalled Chromium, and the two extras Omarchy's own window rules already
+# recognise (Vivaldi, LibreWolf) for anyone who installed them by hand.
+#
+# `family` decides three things that genuinely differ: how the profile is
+# selected, how the window gets a per-client app_id, and which of Omarchy's
+# two parity rules the generated Hyprland rule has to mirror.
 BROWSERS = {
     "chromium": {
         "name": "Chromium",
@@ -91,10 +98,12 @@ BROWSERS = {
         "icon": "brave",
         "family": "chromium",
     },
-    "vivaldi": {
-        "name": "Vivaldi",
-        "commands": ["vivaldi-stable", "vivaldi"],
-        "icon": "vivaldi",
+    "brave-origin": {
+        "name": "Brave Origin",
+        # Binary name not verified against an install; brave-origin-bin is the
+        # package Omarchy pulls.
+        "commands": ["brave-origin"],
+        "icon": "brave",
         "family": "chromium",
     },
     "microsoft-edge": {
@@ -103,22 +112,28 @@ BROWSERS = {
         "icon": "microsoft-edge",
         "family": "chromium",
     },
+    "vivaldi": {
+        "name": "Vivaldi",
+        "commands": ["vivaldi-stable", "vivaldi"],
+        "icon": "vivaldi",
+        "family": "chromium",
+    },
     "firefox": {
         "name": "Firefox",
         "commands": ["firefox"],
         "icon": "firefox",
         "family": "firefox",
     },
-    "librewolf": {
-        "name": "LibreWolf",
-        "commands": ["librewolf"],
-        "icon": "librewolf",
-        "family": "firefox",
-    },
     "zen": {
         "name": "Zen Browser",
         "commands": ["zen-browser", "zen"],
         "icon": "zen-browser",
+        "family": "firefox",
+    },
+    "librewolf": {
+        "name": "LibreWolf",
+        "commands": ["librewolf"],
+        "icon": "librewolf",
         "family": "firefox",
     },
 }
@@ -146,12 +161,25 @@ def installed_browsers():
 
 
 def launch_argv(target, urls, new_window):
-    """Build the argv that opens `urls` in `target`.
+    """Build (argv, env) that opens `urls` in `target`.
 
-    Note the asymmetry: opening a *link* deliberately omits --new-window so
-    Chromium reuses the profile's running window (its singleton is per
-    --user-data-dir), which is what you want when a link is handed to an
-    already-open client session. Launching from the app grid does pass it.
+    The two families need genuinely different handling, and getting it wrong
+    on the Firefox side is not cosmetic:
+
+    Chromium takes `--class=NAME`, which on Wayland becomes the app_id
+    (verified against hyprctl: the window reports class=NAME, xwayland=False),
+    and treats each `--user-data-dir` as its own singleton.
+
+    Firefox ignores `--class` on Wayland — it only ever set the X11 WM_CLASS —
+    so the app_id comes from MOZ_APP_REMOTINGNAME instead. That same variable
+    also keys Firefox's remote-instance handoff, which is the important part:
+    without it, launching a second profile while another is running hands the
+    URL to the *running* instance, so a work link would silently open in the
+    personal session. Setting it per client fixes the app_id and the isolation
+    in one move.
+
+    Opening a link deliberately omits --new-window so the client's existing
+    window is reused; launching from the app grid passes it.
     """
     key = target.get("browser", "chromium")
     spec = BROWSERS.get(key, BROWSERS["chromium"])
@@ -160,6 +188,7 @@ def launch_argv(target, urls, new_window):
         die(f"browser {key!r} is configured for target {target['id']!r} but is not installed")
 
     argv = [binary]
+    env = {}
     profile = target.get("profileDir") or ""
     wm_class = target.get("wmClass") or f"{key}-{target['id']}"
 
@@ -167,17 +196,23 @@ def launch_argv(target, urls, new_window):
         if profile:
             argv.append(f"--user-data-dir={profile}")
         argv.append(f"--class={wm_class}")
-        if new_window:
-            argv.append("--new-window")
     else:
+        env["MOZ_APP_REMOTINGNAME"] = wm_class
         if profile:
             argv += ["--profile", profile]
-        argv += ["--class", wm_class]
-        if new_window:
-            argv.append("--new-window")
+
+    if new_window:
+        argv.append("--new-window")
 
     argv += list(urls)
-    return argv
+    return argv, env
+
+
+def exec_browser(argv, env):
+    """Replace this process with the browser, carrying any env overrides."""
+    if env:
+        os.environ.update(env)
+    os.execv(argv[0], argv)
 
 
 # --------------------------------------------------------------------------- config
@@ -551,7 +586,6 @@ def generate_hypr_rules(cfg):
     takes effect on the next `hyprctl reload` without any config file
     referencing it.
     """
-    rules = [t for t in cfg["targets"] if t.get("wmClass")]
     lines = [
         f"-- {GENERATED_BANNER}",
         "--",
@@ -560,36 +594,69 @@ def generate_hypr_rules(cfg):
         "-- without reading the tab strip.",
         "",
     ]
-    safe = [t for t in rules if lua_regex_class(t["wmClass"])]
+
+    rules = [t for t in cfg["targets"] if t.get("wmClass")]
+
+    safe = []
     for t in rules:
-        if not lua_regex_class(t["wmClass"]):
+        if lua_regex_class(t["wmClass"]):
+            safe.append(t)
+        else:
             warn(f"skipping Hyprland rule for {t['id']}: window class "
                  f"{t['wmClass']!r} has characters that cannot be embedded safely")
     rules = safe
 
     if not rules:
         lines.append("-- No targets configured yet.")
-    else:
-        classes = "|".join(lua_regex_class(t["wmClass"]) for t in rules)
-        lines += [
-            "-- Parity with Omarchy's chromium-based-browser rule: match:class is a",
-            "-- full-match regex, so these custom classes miss the default browser",
-            "-- rule and would otherwise fall back to generic window opacity.",
-            f'o.window("({classes})", {{',
-            '  tag = "-default-opacity",',
-            "  tile = true,",
-            '  opacity = "1.0 0.985",',
-            "})",
-            "",
-            "-- Client identity colours: active border, then a dimmed inactive one",
-            "-- so an unfocused window still shows which client it belongs to.",
-        ]
-        for t in rules:
-            active = hex_digits(t.get("color"))
-            inactive = dim_hex(t.get("color"))
-            lines.append(
-                f'o.window("{t["wmClass"]}", {{ border_color = "rgb({active}) rgb({inactive})" }})'
-            )
+        write_atomic(HYPR_RULES, "\n".join(lines) + "\n")
+        return
+
+    # Parity with Omarchy's own browser rules. Its match:class patterns are
+    # full-match regexes, so a custom per-client app_id like "chromium-acme"
+    # misses them and would keep the generic default-opacity treatment. We
+    # re-apply the right one per family -- and they are not the same rule:
+    # chromium-based browsers get tile=true, firefox-based ones do not.
+    families = {
+        "chromium": {
+            "label": "chromium-based",
+            "body": ['  tag = "-default-opacity",', "  tile = true,",
+                     '  opacity = "1.0 0.985",'],
+        },
+        "firefox": {
+            "label": "firefox-based",
+            "body": ['  tag = "-default-opacity",', '  opacity = "1.0 0.985",'],
+        },
+    }
+
+    lines += [
+        "-- Omarchy's browser rules match on a full-match regex, so these custom",
+        "-- per-client classes miss them. Re-apply each family's treatment, which",
+        "-- differs: chromium-based browsers tile, firefox-based ones do not.",
+    ]
+    for family, spec in families.items():
+        members = [t for t in rules
+                   if BROWSERS.get(t.get("browser", "chromium"),
+                                   BROWSERS["chromium"])["family"] == family]
+        if not members:
+            continue
+        classes = "|".join(lua_regex_class(t["wmClass"]) for t in members)
+        lines.append(f'-- {spec["label"]}')
+        lines.append(f'o.window("({classes})", {{')
+        lines += spec["body"]
+        lines.append("})")
+        lines.append("")
+
+    lines += [
+        "-- Client identity colours: active border, then a dimmed inactive one",
+        "-- so an unfocused window still shows which client it belongs to.",
+    ]
+    for t in rules:
+        active = hex_digits(t.get("color"))
+        inactive = dim_hex(t.get("color"))
+        lines.append(
+            f'o.window("{t["wmClass"]}", {{ border_color = "rgb({active}) rgb({inactive})" }})'
+        )
+
     write_atomic(HYPR_RULES, "\n".join(lines) + "\n")
 
 
@@ -667,15 +734,15 @@ def cmd_open(args):
                 warn("no targets configured — falling back to " + key)
                 os.execv(binary, [binary] + list(args.urls))
         die("no targets configured and no browser found")
-    argv = launch_argv(target, args.urls, new_window=False)
-    os.execv(argv[0], argv)
+    argv, env = launch_argv(target, args.urls, new_window=False)
+    exec_browser(argv, env)
 
 
 def cmd_launch(args):
     cfg = load_config()
     target = require_target(cfg, args.target)
-    argv = launch_argv(target, args.urls, new_window=True)
-    os.execv(argv[0], argv)
+    argv, env = launch_argv(target, args.urls, new_window=True)
+    exec_browser(argv, env)
 
 
 def cmd_use(args):

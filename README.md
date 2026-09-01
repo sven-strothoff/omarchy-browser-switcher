@@ -70,6 +70,37 @@ Requires ImageMagick; `install.sh` checks for it.
 browser-switcher set acme --icon ~/logos/acme.svg   # or: pick-icon, for a file dialog
 ```
 
+### Supported browsers, and how each gets a per-client window identity
+
+Every browser Omarchy can install (`omarchy install browser …`), plus the
+preinstalled Chromium and the two extras Omarchy's own window rules already
+recognise.
+
+| Browser | Family | Profile isolation | Per-client app_id | Verified |
+|---|---|---|---|---|
+| Chromium | chromium | `--user-data-dir` | `--class` | yes, against `hyprctl` |
+| Chrome, Brave, Brave Origin, Edge, Vivaldi | chromium | `--user-data-dir` | `--class` | same mechanism, not installed here |
+| Firefox, Zen, LibreWolf | firefox | `--profile` | `MOZ_APP_REMOTINGNAME` | mechanism is documented, **not tested** |
+
+The two families need genuinely different handling, and the Firefox difference
+is not cosmetic:
+
+- **Chromium** takes `--class=NAME`, which on Wayland becomes the app_id. Confirmed
+  on this machine: the window reports `class=chromium-…` with `xwayland: false`.
+- **Firefox ignores `--class` on Wayland** — it only ever set the X11 `WM_CLASS`.
+  The Wayland app_id comes from `MOZ_APP_REMOTINGNAME`, and that same variable
+  keys Firefox's remote-instance handoff. Without it, launching a second profile
+  while another is running hands the URL to the *running* instance — a work link
+  would silently open in the personal session. Setting it per client fixes the
+  window identity and the isolation together.
+
+Generated Hyprland rules also mirror whichever of Omarchy's two parity rules
+applies: chromium-based browsers get `tile = true`, firefox-based ones don't.
+
+Because a custom app_id misses Omarchy's full-match browser regex, these rules
+are what keep a client window looking like a browser window rather than falling
+back to generic opacity.
+
 ### No launcher script to install
 
 The CLI *is* the launcher. Generated desktop entries call
@@ -188,8 +219,18 @@ what is configured.
 
 ## Status
 
-Early. The CLI is tested; the panel has not yet run through a full session in a
-live shell. See `browser-switcher doctor` if something looks wrong.
+Early.
+
+- The CLI is tested, and the Chromium path is verified end to end against a
+  running Hyprland.
+- The Firefox-family path (Firefox, Zen, LibreWolf) is written to the
+  documented mechanism but has not been run — no Firefox-based browser was
+  installed to test against. The `brave-origin` binary name is likewise a
+  guess at the package's entry point.
+- The bar panel parses and its manifest validates, but it has not yet run
+  through a session in a live shell.
+
+`browser-switcher doctor` reports what is and isn't wired up.
 
 ## License
 
