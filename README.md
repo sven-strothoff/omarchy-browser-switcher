@@ -187,6 +187,11 @@ cycles to the next client without opening anything — the "pop over to personal
 for two minutes and come back" case shouldn't cost a menu. Middle-click opens a
 new window of the current client.
 
+The picker is just the list of clients and a gear in its header. Configuring is
+rare next to switching, so it doesn't get a permanent row — except before the
+first client exists, when the panel is otherwise empty and adding one is the
+only useful thing to do.
+
 **Configure** (the gear, or `c`) turns the same panel into the management view:
 rename in place, set a colour, choose a logo, delete, add a client.
 

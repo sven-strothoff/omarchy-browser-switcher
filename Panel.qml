@@ -86,16 +86,14 @@ Panel {
   function moveCursor(dy) {
     cursorActive = true
     if (manageMode || targets.length === 0) return
-    // One past the end is the Configure row, so the whole switch view is
-    // reachable without the mouse.
-    var limit = targets.length
-    cursorIndex = Math.max(0, Math.min(limit, cursorIndex + dy))
+    cursorIndex = Math.max(0, Math.min(targets.length - 1, cursorIndex + dy))
   }
 
   function activateCursor() {
     if (manageMode) return
-    if (cursorIndex >= targets.length) setManageMode(true)
-    else switchTo(targets[cursorIndex])
+    // With nothing configured, Enter does the only useful thing.
+    if (targets.length === 0) { setManageMode(true); return }
+    if (cursorIndex >= 0 && cursorIndex < targets.length) switchTo(targets[cursorIndex])
   }
 
   implicitWidth: button.implicitWidth
@@ -323,7 +321,9 @@ Panel {
 
             trailingControl: Component {
               PanelActionButton {
-                iconText: root.manageMode ? "" : "󰒓"
+                // Both states need a real glyph: an empty string here rendered
+                // an invisible-but-clickable button in the manage view.
+                iconText: root.manageMode ? "󰅁" : "󰒓"
                 tooltipText: root.manageMode ? "Back" : "Configure"
                 foreground: root.foreground
                 fontFamily: root.fontFamily
@@ -365,21 +365,19 @@ Panel {
             visible: !root.manageMode && !switcher.cliMissing
 
             PanelSectionHeader {
+              // Nothing to label when the list is empty; the empty state
+              // speaks for itself.
+              visible: root.targets.length > 0
               text: "BROWSERS"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
 
-            Text {
-              textFormat: Text.PlainText
-              visible: root.targets.length === 0
-              width: parent.width
-              text: "No clients configured yet.\nOpen Configure to add one."
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              horizontalAlignment: Text.AlignHCenter
-            }
+            // First run has nothing to switch between, so the one thing worth
+            // doing gets a real button. Once clients exist this disappears and
+            // the gear in the header is the only way in — configuring is rare
+            // next to switching, and shouldn't take up a row forever.
+            EmptyState { visible: root.targets.length === 0; width: parent.width }
 
             Column {
               id: targetColumn
@@ -398,9 +396,6 @@ Panel {
               }
             }
 
-            PanelSeparator { foreground: root.foreground }
-
-            ConfigureRow { width: parent.width }
           }
 
           // ------------------------------------------------- manage view
@@ -581,51 +576,60 @@ Panel {
     }
   }
 
-  component ConfigureRow: CursorSurface {
-    id: configureRow
+  component EmptyState: Column {
+    id: emptyState
+    spacing: Style.space(10)
 
-    hasCursor: root.cursorActive && !root.manageMode && root.cursorIndex >= root.targets.length
-    foreground: root.foreground
-    implicitHeight: configureLabel.implicitHeight + Style.spacing.rowPaddingX
-
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onEntered: { root.cursorActive = true; root.cursorIndex = root.targets.length }
-      onClicked: root.setManageMode(true)
+    Text {
+      textFormat: Text.PlainText
+      width: emptyState.width
+      text: "No clients yet."
+      color: root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.body
+      horizontalAlignment: Text.AlignHCenter
     }
 
-    RowLayout {
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      spacing: Style.space(9)
+    CursorSurface {
+      width: emptyState.width
+      hasCursor: root.cursorActive && !root.manageMode
+      foreground: root.foreground
+      bordered: true
+      implicitHeight: emptyLabel.implicitHeight + Style.spacing.rowPaddingX
 
-      Text {
-        textFormat: Text.PlainText
-        text: "󰒓"
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.icon
-        Layout.alignment: Qt.AlignVCenter
+      MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onEntered: root.cursorActive = true
+        onClicked: root.setManageMode(true)
       }
 
-      Text {
-        id: configureLabel
-        textFormat: Text.PlainText
-        Layout.fillWidth: true
-        text: "Configure clients"
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
-        elide: Text.ElideRight
+      Row {
+        anchors.centerIn: parent
+        spacing: Style.space(8)
+
+        Text {
+          textFormat: Text.PlainText
+          anchors.verticalCenter: parent.verticalCenter
+          text: "󰐕"
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.icon
+        }
+
+        Text {
+          id: emptyLabel
+          textFormat: Text.PlainText
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Add your first client"
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+        }
       }
     }
   }
-
   component TargetIcon: Item {
     id: targetIcon
     property var target: null
