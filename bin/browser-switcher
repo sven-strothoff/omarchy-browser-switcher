@@ -51,6 +51,9 @@ BADGE_DIR = os.path.join(DATA_DIR, "badges")
 PROFILE_ROOT = os.path.join(DATA_DIR, "profiles")
 APPS_DIR = os.path.join(_xdg("XDG_DATA_HOME", "~/.local/share"), "applications")
 ICON_ROOT = os.path.join(_xdg("XDG_DATA_HOME", "~/.local/share"), "icons", "hicolor")
+# Not an XDG-configurable location, so unlike everything else here it is keyed
+# on HOME alone.
+BIN_DIR = os.path.join(HOME, ".local", "bin")
 HYPR_DIR = os.path.join(_xdg("XDG_CONFIG_HOME", "~/.config"), "hypr")
 HYPR_MAIN = os.path.join(HYPR_DIR, "hyprland.lua")
 # Omarchy's stock hyprland.lua ends with `require("default.hypr.toggles")`,
@@ -1213,7 +1216,7 @@ def link_into_path():
     into the plugin directory and break if the plugin is removed.
     """
     source = os.path.realpath(os.path.abspath(sys.argv[0]))
-    dest = os.path.join(HOME, ".local", "bin", APP)
+    dest = os.path.join(BIN_DIR, APP)
     if os.path.realpath(dest) == source:
         return
     if os.path.exists(dest) or os.path.islink(dest):
@@ -1278,9 +1281,13 @@ def cmd_uninstall(args):
         else:
             warn("was the default browser — set a new default manually")
 
-    # Only remove the PATH link if it still points at this program.
-    dest = os.path.join(HOME, ".local", "bin", APP)
-    if os.path.islink(dest) and APP in os.path.realpath(dest):
+    # Remove the PATH link only when it resolves to the very program running
+    # this uninstall. Matching on the name alone would let one copy delete a
+    # link belonging to another — and this path is keyed on HOME, so it is not
+    # redirected by the XDG_* overrides the rest of the program honours.
+    dest = os.path.join(BIN_DIR, APP)
+    running = os.path.realpath(os.path.abspath(sys.argv[0]))
+    if os.path.islink(dest) and os.path.realpath(dest) == running:
         remove_quiet(dest)
         info(f"removed {dest}")
 
