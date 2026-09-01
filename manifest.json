@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "sven.browser-switcher",
+  "name": "Browser Switcher",
+  "version": "0.1.0",
+  "author": "Sven Strothoff",
+  "license": "MIT",
+  "description": "Switch which browser or client profile opened links go to, straight from the bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Browser Switcher",
+    "description": "Pick the browser or client profile that links open in, and manage client configurations.",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "showLabel": false,
+      "notifyOnSwitch": true
+    },
+    "schema": [
+      {
+        "key": "showLabel",
+        "type": "boolean",
+        "label": "Show the active client's name in the bar",
+        "defaultValue": false
+      },
+      {
+        "key": "notifyOnSwitch",
+        "type": "boolean",
+        "label": "Show a notification when switching",
+        "defaultValue": true
+      }
+    ]
+  }
+}
