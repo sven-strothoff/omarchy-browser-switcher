@@ -840,16 +840,56 @@ def cmd_list(args):
         }, indent=2))
         return
     if not cfg["targets"]:
-        print("no targets configured — add one with `browser-switcher add --name NAME`")
+        print("Nothing configured yet.")
+        print("  browser-switcher add --name NAME     an isolated client")
+        print("  browser-switcher add-browser NAME    a browser as itself")
         return
-    for t in cfg["targets"]:
-        mark = "*" if current and t["id"] == current["id"] else " "
-        if is_client(t):
-            print(f" {mark} {t['id']:<18} {t['name']:<22} {t.get('browser','chromium'):<14} "
-                  f"client   {norm_color(t.get('color'))}")
-        else:
-            print(f" {mark} {t['id']:<18} {t['name']:<22} {t.get('browser','chromium'):<14} "
-                  f"browser")
+
+    clients = [t for t in cfg["targets"] if is_client(t)]
+    systems = [t for t in cfg["targets"] if not is_client(t)]
+
+    def label(target):
+        # The id is derived from the name, so for most entries the two are the
+        # same string and printing both is just noise. Show the id only when it
+        # differs and you would therefore need to be told it.
+        name = str(target.get("name", target["id"]))
+        return name if slugify(name) == target["id"] else f"{name} ({target['id']})"
+
+    width = min(34, max(len(label(t)) for t in cfg["targets"]))
+
+    def render(target):
+        active = current and target["id"] == current["id"]
+        # An arrow rather than an asterisk: the active entry is where links go,
+        # which is a direction, not a footnote.
+        mark = "→" if active else " "
+        browser = str(target.get("browser", "chromium"))
+        line = f"  {mark} {label(target):<{width}}  {browser:<14}"
+        if is_client(target):
+            line += f"{swatch(target.get('color'))}"
+        if not browser_binary(browser):
+            line += "  (not installed)"
+        return line.rstrip()
+
+    if clients:
+        print("Clients" if not systems else "Clients (isolated profiles)")
+        for t in clients:
+            print(render(t))
+    if systems:
+        if clients:
+            print()
+        print("System browsers")
+        for t in systems:
+            print(render(t))
+
+
+def swatch(color):
+    """The colour itself when a terminal can show it, the hex when it can't."""
+    hex_value = norm_color(color)
+    if not sys.stdout.isatty() or os.environ.get("NO_COLOR"):
+        return hex_value
+    h = hex_value.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"\x1b[38;2;{r};{g};{b}m\u25a0\u25a0\x1b[0m {hex_value}"
 
 
 def cmd_browsers(args):

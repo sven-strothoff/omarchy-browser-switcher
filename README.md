@@ -233,6 +233,24 @@ Both appear in the switcher panel and both can be the active link destination.
 Colour and logo apply only to clients; asking for them on a system browser is
 refused rather than silently ignored.
 
+`list` groups the two and marks where links currently go:
+
+```
+Clients (isolated profiles)
+    personal                      chromium      ■■ #DF8E1D
+  → Acme Corp                       chromium      ■■ #D20F39
+    Legacy                          firefox       ■■ #3F5FCF  (not installed)
+
+System browsers
+    Chromium                        chromium
+    Zen Browser (zen)               zen
+```
+
+An entry's id is shown in brackets only when it differs from its name — most
+ids are derived from the name, and printing both every time is just noise.
+Either one works wherever a command takes a target. The colour swatch is drawn
+only when stdout is a terminal and `NO_COLOR` is unset, so piping stays clean.
+
 ### Bar icon style
 
 The badged icon is the clearest signal of which client is live, but it is
@@ -265,7 +283,7 @@ other bar icons. Labels from earlier versions (`Theme`, `Client colour`,
 
 ```bash
 browser-switcher list                 # what exists, and what's active
-browser-switcher use acme             # switch
+browser-switcher use acme             # switch (id or name, either works)
 browser-switcher add --name "Acme" --color '#D20F39' --icon ~/logos/acme.png
 browser-switcher rename acme "Acme Corp"
 browser-switcher remove acme          # keeps the browsing data
