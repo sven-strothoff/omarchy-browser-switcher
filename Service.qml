@@ -147,6 +147,17 @@ Item {
 
   function addBrowser(browser) { run(["add-browser", browser], "add-browser") }
 
+  // Bar appearance lives in the widget's own shell.json entry, not in the
+  // switcher's config, so this goes through omarchy rather than our CLI. The
+  // shell reloads shell.json on write, which feeds `settings` straight back to
+  // the panel — no restart, and no local copy of the value to keep in sync.
+  function setBarIcon(value) {
+    if (barIconProcess.running) return
+    barIconProcess.command = ["omarchy", "bar", "set", "sven.browser-switcher",
+                              "barIcon", String(value)]
+    barIconProcess.running = true
+  }
+
   function add(name, browser, color) {
     var args = ["add", "--name", name]
     if (browser) args = args.concat(["--browser", browser])
@@ -195,6 +206,18 @@ Item {
       if (exitCode !== 0) root.lastError = err
       else root.lastError = ""
       refreshDebounce.restart()
+    }
+  }
+
+  Process {
+    id: barIconProcess
+    running: false
+    command: []
+    stderr: StdioCollector { id: barIconErr; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        root.lastError = String(barIconErr.text || "").split("\n")[0] || "Could not save bar icon style"
+      }
     }
   }
 

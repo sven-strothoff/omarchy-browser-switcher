@@ -21,7 +21,7 @@
     "defaults": {
       "showLabel": false,
       "notifyOnSwitch": true,
-      "barIcon": "Theme"
+      "barIcon": "Colour dot"
     },
     "schema": [
       {
@@ -29,12 +29,13 @@
         "type": "enum",
         "label": "Bar icon style",
         "options": [
-          "Theme",
-          "Client colour",
-          "Full colour"
+          "No indicator",
+          "Colour dot",
+          "Coloured glyph",
+          "Client icon"
         ],
-        "defaultValue": "Theme",
-        "description": "Theme uses a bar-coloured glyph with a small client-colour dot. Client colour tints the glyph itself. Full colour shows the badged browser icon."
+        "defaultValue": "Colour dot",
+        "description": "How the bar shows which client is active: nothing, a small client-colour dot beside the glyph, the glyph tinted with the client colour, or the full badged browser icon."
       },
       {
         "key": "showLabel",

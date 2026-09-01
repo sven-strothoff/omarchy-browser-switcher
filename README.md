@@ -171,6 +171,14 @@ reload with:
 omarchy restart shell
 ```
 
+QML errors do not surface in the panel — they go to the shell's log, and a
+plugin with a broken binding often just renders nothing. Check there first when
+something disappears:
+
+```bash
+journalctl --user --since "1 minute ago" | grep browser-switcher
+```
+
 The panel also answers on its own IPC target, which is handy while iterating and
 worth binding to a key:
 
@@ -233,12 +241,19 @@ full-colour artwork sitting in a row of monochrome glyphs. The widget's
 
 | Value | Look |
 |---|---|
-| `Theme` (default) | bar-coloured glyph with a small client-colour dot |
-| `Client colour` | the glyph itself tinted with the client's colour |
-| `Full colour` | the badged browser icon |
+| `No indicator` | just the glyph — no sign of which client is active |
+| `Colour dot` (default) | bar-coloured glyph with a small client-colour dot |
+| `Coloured glyph` | the glyph itself tinted with the client's colour |
+| `Client icon` | the full-colour badged browser icon |
 
-Set it in `~/.config/omarchy/shell.json` on the widget's entry, e.g.
-`{ "id": "sven.browser-switcher", "barIcon": "Full colour" }`.
+Pick it from the manage view's **Bar icon** dropdown — it writes through
+`omarchy bar set`, so the change is immediate and persists in `shell.json`.
+Editing that file by hand works too:
+`{ "id": "sven.browser-switcher", "barIcon": "Client icon" }`.
+
+Later options are clearer at a glance; earlier ones sit more quietly beside the
+other bar icons. Labels from earlier versions (`Theme`, `Client colour`,
+`Full colour`) are still understood.
 
 **From the terminal**, which is the whole API:
 

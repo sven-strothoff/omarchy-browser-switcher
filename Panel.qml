@@ -41,22 +41,35 @@ Panel {
   // pixels apart and the row reads as misaligned.
   readonly property int controlH: Style.spacing.controlHeight
 
-  // How the bar widget presents the active client. The badged icon is the
-  // clearest signal of which client is live, but it is full-colour artwork
-  // sitting in a row of monochrome glyphs, so it is not the default.
-  //   theme  — bar-coloured glyph with a small client-colour dot
-  //   client — glyph tinted with the client's colour
+  // How the bar widget presents the active client, from least to most
+  // conspicuous. The badged icon is the clearest signal of which client is
+  // live, but it is full-colour artwork sitting in a row of monochrome glyphs.
+  //   plain  — a glyph, and nothing else: no indication of state at all
+  //   dot    — bar-coloured glyph with a small client-colour dot
+  //   tinted — the glyph itself in the client's colour
   //   icon   — the full-colour badged icon
+  readonly property var barIconOptions: [
+    "No indicator", "Colour dot", "Coloured glyph", "Client icon"
+  ]
+  readonly property string barIconSetting: String(root.setting("barIcon", "Colour dot"))
+
+  // Matched loosely, and deliberately: the stored value is a display label, so
+  // this has to keep honouring the labels earlier versions wrote
+  // ("Theme", "Client colour", "Full colour") as well as the current ones.
   readonly property string barIconMode: {
-    var v = String(root.setting("barIcon", "Theme")).toLowerCase()
-    if (v.indexOf("full") === 0 || v === "icon") return "icon"
-    if (v.indexOf("client") === 0 || v === "accent") return "client"
-    return "theme"
+    var v = root.barIconSetting.toLowerCase()
+    if (v.indexOf("dot") >= 0 || v.indexOf("theme") >= 0) return "dot"
+    if (v.indexOf("no indicator") >= 0 || v.indexOf("plain") >= 0) return "plain"
+    if (v.indexOf("glyph") >= 0 || v.indexOf("tint") >= 0
+        || v.indexOf("accent") >= 0 || v.indexOf("client colour") >= 0
+        || v.indexOf("client color") >= 0) return "tinted"
+    if (v.indexOf("icon") >= 0 || v.indexOf("full") >= 0) return "icon"
+    return "dot"
   }
 
   // Border colours, chosen to stay distinguishable from each other as a thin
-  // window border on both light and dark themes. The hex field below covers
-  // any exact brand colour that isn't here.
+  // window border on both light and dark themes. The hex field beside the grid
+  // covers any exact brand colour that isn't here.
   readonly property var palette: [
     "#D20F39", "#E2571A", "#DF8E1D", "#7A9A01", "#2E9E4F", "#179299", "#1F7AB8",
     "#3F5FCF", "#7A5CD0", "#8839EF", "#C2455F", "#7A6A5C", "#5B6B72", "#9AA5AB"
@@ -219,7 +232,7 @@ Panel {
               anchors.centerIn: parent
               visible: root.barIconMode !== "icon"
               text: "󰖟"
-              color: root.barIconMode === "client" && root.active
+              color: root.barIconMode === "tinted" && root.active
                 ? root.targetColor(root.active)
                 : root.barForeground
               font.family: root.fontFamily
@@ -227,7 +240,7 @@ Panel {
             }
 
             Rectangle {
-              visible: root.barIconMode === "theme" && root.active !== null
+              visible: root.barIconMode === "dot" && root.active !== null
                 && root.isClient(root.active)
               anchors.right: parent.right
               anchors.bottom: parent.bottom
@@ -554,6 +567,40 @@ Panel {
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
               }
+            }
+
+            PanelSeparator { foreground: root.foreground }
+
+            PanelSectionHeader {
+              text: "BAR ICON"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            // Purely a visual preference, so it belongs where you can flip it
+            // and look at the bar, rather than in a JSON file behind a restart.
+            Dropdown {
+              id: barIconPicker
+              width: parent.width
+              height: root.controlH
+              rowHeight: root.controlH
+              showLabel: false
+              fontFamily: root.fontFamily
+              options: root.barIconOptions
+              value: root.barIconSetting
+              onChanged: function(v) {
+                if (v !== root.barIconSetting) switcher.setBarIcon(v)
+              }
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              wrapMode: Text.WordWrap
+              text: "How the bar shows which client is active. Later options are clearer at a glance; earlier ones sit more quietly beside the other bar icons."
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
             }
           }
         }
