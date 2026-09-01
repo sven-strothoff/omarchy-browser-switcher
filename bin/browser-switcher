@@ -741,11 +741,17 @@ def info(msg):
 
 
 def notify(title, body, icon=None):
+    """Desktop notification. `icon` is a path; a missing one is dropped.
+
+    Passing a name the icon theme cannot resolve makes the notification daemon
+    draw its missing-image placeholder — the pink-and-black checkerboard — which
+    looks far more broken than simply having no icon.
+    """
     exe = shutil.which("notify-send")
     if not exe:
         return
     argv = [exe, "-a", "Browser Switcher"]
-    if icon:
+    if icon and os.path.isfile(icon):
         argv += ["-i", icon]
     argv += [title, body]
     subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -783,7 +789,10 @@ def cmd_use(args):
     if not args.quiet:
         info(f"links now open in {target['name']}")
     if args.notify:
-        notify("Browser switched", f"Links now open in {target['name']}", icon_name(target))
+        # resolve_icon_path covers both kinds: the generated badge for a
+        # client, the browser's own stock icon for a system browser.
+        notify("Browser switched", f"Links now open in {target['name']}",
+               resolve_icon_path(target))
 
 
 def cmd_status(args):
