@@ -14,32 +14,29 @@ PLUGIN_DIR="${HOME}/.config/omarchy/plugins/${PLUGIN_ID}"
 
 ENABLE=0
 SET_DEFAULT=0
-HYPRLAND=0
-ADOPT=0
 
 usage() {
   cat <<'USAGE'
 Usage: ./install.sh [options]
 
   --enable        add the widget to the Omarchy bar
-  --adopt         register existing hand-made profile launchers (non-destructive)
-  --hyprland      add the generated window-border rules to hyprland.lua
   --set-default   make browser-switcher the handler for opened links
-  --all           all of the above
+  --all           both of the above
   -h, --help      show this help
 
 With no options it installs the CLI and the plugin files only, and changes
 nothing about how your system currently opens links.
+
+Window-border rules need no flag: they are written into the directory
+Omarchy already auto-loads generated Lua from, so no config file is edited.
 USAGE
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --enable) ENABLE=1 ;;
-    --adopt) ADOPT=1 ;;
-    --hyprland) HYPRLAND=1 ;;
     --set-default) SET_DEFAULT=1 ;;
-    --all) ENABLE=1; ADOPT=1; HYPRLAND=1; SET_DEFAULT=1 ;;
+    --all) ENABLE=1; SET_DEFAULT=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage; exit 1 ;;
   esac
@@ -85,13 +82,7 @@ echo "    ${PLUGIN_DIR} -> ${REPO}"
 step "Installing the link router"
 INSTALL_ARGS=()
 [[ ${SET_DEFAULT} -eq 1 ]] && INSTALL_ARGS+=(--set-default)
-[[ ${HYPRLAND} -eq 1 ]] && INSTALL_ARGS+=(--hyprland)
 "${BIN_DIR}/browser-switcher" install "${INSTALL_ARGS[@]+"${INSTALL_ARGS[@]}"}"
-
-if [[ ${ADOPT} -eq 1 ]]; then
-  step "Adopting existing profile launchers"
-  "${BIN_DIR}/browser-switcher" adopt
-fi
 
 # ---------------------------------------------------------------------- shell
 step "Telling the Omarchy shell to rescan its plugins"
@@ -113,7 +104,6 @@ cat <<NEXT
 
 Next steps:
   browser-switcher list                     what you have now
-  browser-switcher adopt                    pick up hand-made launchers as-is
   browser-switcher add --name "Client C"    create a fresh isolated client
   omarchy plugin enable ${PLUGIN_ID}    put the widget in the bar
 

@@ -9,9 +9,12 @@ currently selected. Switching browsers is then a one-line write, not a
 rewrite of mimeapps.list, so it is instant and nothing races with it.
 
 Everything this program generates is namespaced with a `browser-switcher-`
-prefix and carries a GENERATED banner. Files it did not create are never
-written or deleted: hand-made setups are brought in with `adopt`, which
-records them as unmanaged and leaves them strictly alone.
+prefix and carries a GENERATED banner, and nothing it did not create is ever
+written or deleted. It assumes nothing about the machine beyond a stock
+Omarchy install: it creates its own browser data directories, generates its
+own desktop entries and icons, and drops its Hyprland rules into the
+directory Omarchy already auto-loads generated Lua from, so no existing
+config file has to be edited for any of it to work.
 """
 
 import argparse
@@ -43,14 +46,23 @@ STATE_DIR = os.path.join(_xdg("XDG_STATE_HOME", "~/.local/state"), APP)
 STATE_FILE = os.path.join(STATE_DIR, "active")
 DATA_DIR = os.path.join(_xdg("XDG_DATA_HOME", "~/.local/share"), APP)
 BADGE_DIR = os.path.join(DATA_DIR, "badges")
-PROFILE_ROOT = os.path.join(_xdg("XDG_DATA_HOME", "~/.local/share"), "chromium-profiles")
+# Plugin-owned and browser-agnostic: Firefox targets live here too, and a
+# purge knows every directory it is allowed to delete.
+PROFILE_ROOT = os.path.join(DATA_DIR, "profiles")
 APPS_DIR = os.path.join(_xdg("XDG_DATA_HOME", "~/.local/share"), "applications")
 ICON_ROOT = os.path.join(_xdg("XDG_DATA_HOME", "~/.local/share"), "icons", "hicolor")
 HYPR_DIR = os.path.join(_xdg("XDG_CONFIG_HOME", "~/.config"), "hypr")
-HYPR_RULES = os.path.join(HYPR_DIR, "browser-switcher.lua")
 HYPR_MAIN = os.path.join(HYPR_DIR, "hyprland.lua")
+# Omarchy's stock hyprland.lua ends with `require("default.hypr.toggles")`,
+# which require_all's every *.lua in this directory on each reload. Dropping
+# our rules here means a clean install needs no edit to any config file, and
+# uninstalling is a single unlink. It also loads after the user's own
+# hypr.* modules, so our border colours win — which is what we want, since
+# rules are evaluated top to bottom and the last match applies.
+HYPR_RULES_DIR = os.path.join(_xdg("XDG_STATE_HOME", "~/.local/state"),
+                              "omarchy", "toggles", "hypr")
+HYPR_RULES = os.path.join(HYPR_RULES_DIR, "browser-switcher.lua")
 ROUTER_DESKTOP = os.path.join(APPS_DIR, "browser-switcher.desktop")
-HYPR_REQUIRE = 'require("hypr.browser-switcher")'
 
 
 # --------------------------------------------------------------------------- browsers
@@ -406,12 +418,7 @@ def resolve_icon_path(target):
     QML draws a file, not an icon-theme name, so the lookup that a desktop
     environment would normally do has to happen here.
     """
-    if target.get("managed"):
-        name = icon_name(target)
-    else:
-        name = target.get("icon") or BROWSERS.get(
-            target.get("browser", "chromium"), BROWSERS["chromium"])["icon"]
-
+    name = icon_name(target)
     if os.path.isabs(name) and os.path.isfile(name):
         return name
 
@@ -538,13 +545,13 @@ def sanitize_wm_class(value):
 
 
 def generate_hypr_rules(cfg):
-    """Emit Hyprland window rules for managed targets only.
+    """Emit Hyprland window rules for every configured target.
 
-    Adopted targets are skipped on purpose: the user already has rules for
-    them somewhere, and two `o.window` rules for one class would fight over
-    the border colour depending on require order.
+    Written into Omarchy's auto-required generated-Lua directory, so this
+    takes effect on the next `hyprctl reload` without any config file
+    referencing it.
     """
-    managed = [t for t in cfg["targets"] if t.get("managed") and t.get("wmClass")]
+    rules = [t for t in cfg["targets"] if t.get("wmClass")]
     lines = [
         f"-- {GENERATED_BANNER}",
         "--",
@@ -553,17 +560,17 @@ def generate_hypr_rules(cfg):
         "-- without reading the tab strip.",
         "",
     ]
-    safe = [t for t in managed if lua_regex_class(t["wmClass"])]
-    for t in managed:
+    safe = [t for t in rules if lua_regex_class(t["wmClass"])]
+    for t in rules:
         if not lua_regex_class(t["wmClass"]):
             warn(f"skipping Hyprland rule for {t['id']}: window class "
                  f"{t['wmClass']!r} has characters that cannot be embedded safely")
-    managed = safe
+    rules = safe
 
-    if not managed:
-        lines.append("-- No managed targets yet.")
+    if not rules:
+        lines.append("-- No targets configured yet.")
     else:
-        classes = "|".join(lua_regex_class(t["wmClass"]) for t in managed)
+        classes = "|".join(lua_regex_class(t["wmClass"]) for t in rules)
         lines += [
             "-- Parity with Omarchy's chromium-based-browser rule: match:class is a",
             "-- full-match regex, so these custom classes miss the default browser",
@@ -577,13 +584,26 @@ def generate_hypr_rules(cfg):
             "-- Client identity colours: active border, then a dimmed inactive one",
             "-- so an unfocused window still shows which client it belongs to.",
         ]
-        for t in managed:
+        for t in rules:
             active = hex_digits(t.get("color"))
             inactive = dim_hex(t.get("color"))
             lines.append(
                 f'o.window("{t["wmClass"]}", {{ border_color = "rgb({active}) rgb({inactive})" }})'
             )
     write_atomic(HYPR_RULES, "\n".join(lines) + "\n")
+
+
+def reload_hyprland():
+    """Ask Hyprland to re-read its config so new rules apply to new windows.
+
+    Silent when Hyprland is not running (a headless install, or configuring
+    from a TTY) — the rules are on disk either way and load on next start.
+    """
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return
+    exe = shutil.which("hyprctl")
+    if exe:
+        run_quiet([exe, "reload"])
 
 
 def refresh_desktop_database():
@@ -598,10 +618,10 @@ def refresh_desktop_database():
 def apply_all(cfg, quiet=False):
     generate_router_desktop()
     for target in cfg["targets"]:
-        if target.get("managed"):
-            generate_icons(target)
-            generate_desktop(target)
+        generate_icons(target)
+        generate_desktop(target)
     generate_hypr_rules(cfg)
+    reload_hyprland()
     refresh_desktop_database()
     if not quiet:
         info(f"applied {len(cfg['targets'])} target(s)")
@@ -708,9 +728,8 @@ def cmd_list(args):
         return
     for t in cfg["targets"]:
         mark = "*" if current and t["id"] == current["id"] else " "
-        kind = "managed" if t.get("managed") else "adopted"
         print(f" {mark} {t['id']:<18} {t['name']:<22} {t.get('browser','chromium'):<14} "
-              f"{norm_color(t.get('color')):<8} {kind}")
+              f"{norm_color(t.get('color'))}")
 
 
 def cmd_browsers(args):
@@ -742,8 +761,7 @@ def cmd_add(args):
     clash = existing_wm_class_owner(cfg, wm_class)
     if clash and not args.force:
         die(f"window class {wm_class!r} is already used by {clash}.\n"
-            f"  Use `{APP} adopt` to bring that setup in as-is, or pass "
-            f"--wm-class to pick another class.")
+            f"  Remove that entry first, or pass --wm-class to pick another class.")
 
     profile_dir = args.profile_dir or os.path.join(PROFILE_ROOT, target_id)
     badge = None
@@ -758,7 +776,6 @@ def cmd_add(args):
         "wmClass": wm_class,
         "color": norm_color(args.color),
         "badge": badge,
-        "managed": True,
     }
     cfg["targets"].append(target)
     save_config(cfg)
@@ -819,13 +836,10 @@ def cmd_remove(args):
     cfg["targets"] = [t for t in cfg["targets"] if t["id"] != target["id"]]
     save_config(cfg)
 
-    if target.get("managed"):
-        remove_quiet(os.path.join(APPS_DIR, desktop_filename(target)))
-        for size in ICON_SIZES:
-            remove_quiet(os.path.join(ICON_ROOT, f"{size}x{size}", "apps", f"{icon_name(target)}.png"))
-        remove_quiet(target.get("badge"))
-    else:
-        info(f"{target['id']} was adopted, not generated — its desktop entry and icon are left in place")
+    remove_quiet(os.path.join(APPS_DIR, desktop_filename(target)))
+    for size in ICON_SIZES:
+        remove_quiet(os.path.join(ICON_ROOT, f"{size}x{size}", "apps", f"{icon_name(target)}.png"))
+    remove_quiet(target.get("badge"))
 
     if args.purge and target.get("profileDir", "").startswith(PROFILE_ROOT):
         shutil.rmtree(target["profileDir"], ignore_errors=True)
@@ -941,246 +955,6 @@ def cmd_pick_color(args):
     info(f"colour updated for {target['id']}")
 
 
-# --------------------------------------------------------------------------- adopt
-
-def parse_desktop(path):
-    fields = {}
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            in_entry = False
-            for line in fh:
-                line = line.strip()
-                if line.startswith("["):
-                    in_entry = line == "[Desktop Entry]"
-                    continue
-                if not in_entry or "=" not in line or line.startswith("#"):
-                    continue
-                key, _, value = line.partition("=")
-                fields.setdefault(key.strip(), value.strip())
-    except OSError:
-        return None
-    return fields
-
-
-def discover_candidates(cfg):
-    """Find hand-made per-profile browser launchers not yet in the config.
-
-    The tell is a browser Exec that pins an isolated profile directory —
-    that is what makes an entry a *client session* rather than just another
-    way to start the browser.
-    """
-    known_desktops = {t.get("desktopFile") for t in cfg["targets"]}
-    known_classes = {t.get("wmClass") for t in cfg["targets"]}
-    found = []
-    try:
-        entries = sorted(os.listdir(APPS_DIR))
-    except OSError:
-        return found
-
-    for entry in entries:
-        if not entry.endswith(".desktop") or entry.startswith("browser-switcher"):
-            continue
-        path = os.path.join(APPS_DIR, entry)
-        fields = parse_desktop(path)
-        if not fields or fields.get("Type") != "Application":
-            continue
-        exec_line = fields.get("Exec", "")
-        wm_class = fields.get("StartupWMClass", "")
-        if entry in known_desktops or (wm_class and wm_class in known_classes):
-            continue
-
-        browser, profile = infer_from_exec(exec_line)
-        if not browser:
-            continue
-        if not profile and not wm_class:
-            continue
-
-        found.append({
-            "desktopFile": entry,
-            "path": path,
-            "name": fields.get("Name", entry[:-8]),
-            "browser": browser,
-            "profileDir": profile,
-            "wmClass": wm_class,
-            "icon": fields.get("Icon", ""),
-            "exec": exec_line,
-        })
-    return found
-
-
-def infer_from_exec(exec_line):
-    """Work out (browser, profile dir) from an Exec line.
-
-    Handles both a direct browser invocation and the common wrapper-script
-    shape (`~/.local/bin/chromium-client acme`), where the profile path only
-    exists inside the script — so we read the script too.
-    """
-    try:
-        parts = shlex.split(exec_line)
-    except ValueError:
-        parts = exec_line.split()
-    if not parts:
-        return None, ""
-
-    browser = None
-    profile = ""
-    program = os.path.basename(parts[0])
-
-    for key, spec in BROWSERS.items():
-        if program in spec["commands"] or program == key:
-            browser = key
-            break
-
-    for i, part in enumerate(parts[1:], start=1):
-        if part.startswith("--user-data-dir="):
-            profile = os.path.expanduser(part.split("=", 1)[1])
-        elif part == "--user-data-dir" and i + 1 < len(parts):
-            profile = os.path.expanduser(parts[i + 1])
-        elif part == "--profile" and i + 1 < len(parts):
-            profile = os.path.expanduser(parts[i + 1])
-
-    if browser:
-        return browser, profile
-
-    # Wrapper script: resolve it and look inside.
-    script = os.path.expanduser(parts[0])
-    if not os.path.isabs(script):
-        script = shutil.which(parts[0]) or script
-    if not os.path.isfile(script):
-        return None, ""
-    try:
-        with open(script, "r", encoding="utf-8", errors="replace") as fh:
-            body = fh.read()
-    except OSError:
-        return None, ""
-    if len(body) > 64000:
-        return None, ""
-
-    for key, spec in BROWSERS.items():
-        for command in spec["commands"] + [key]:
-            if re.search(r"(^|[\s\"'=/])%s(\s|$|\")" % re.escape(command), body, re.M):
-                browser = key
-                break
-        if browser:
-            break
-    if not browser:
-        return None, ""
-
-    match = re.search(r'--user-data-dir=(?:"|\')?([^"\'\s]+)', body)
-    if match:
-        raw = match.group(1)
-        arg = parts[1] if len(parts) > 1 else ""
-        # Expand the shell in the narrow way these wrappers actually use it.
-        raw = raw.replace("$HOME", HOME).replace("${HOME}", HOME)
-        raw = raw.replace('$CLIENT', arg).replace('${CLIENT}', arg)
-        raw = raw.replace('$1', arg)
-        if "$" not in raw:
-            profile = os.path.expanduser(raw)
-    return browser, profile
-
-
-def cmd_discover(args):
-    cfg = load_config()
-    candidates = discover_candidates(cfg)
-    if args.json:
-        print(json.dumps(candidates, indent=2))
-        return
-    if not candidates:
-        print("no unregistered browser profile launchers found")
-        return
-    for c in candidates:
-        print(f"{c['desktopFile']:<34} {c['name']:<24} {c['browser']:<12} {c['profileDir']}")
-
-
-def existing_border_color(wm_class):
-    """Recover the colour a hand-written Hyprland rule already uses for a class.
-
-    Adopting should not silently repaint a client that already has an agreed
-    brand colour, so we read it back out of the user's own config rather than
-    assigning a default.
-    """
-    if not wm_class:
-        return None
-    pattern = re.compile(
-        r'o\.window\(\s*"' + re.escape(wm_class) +
-        r'"\s*,\s*\{[^}]*border_color\s*=\s*"\s*rgba?\(([0-9A-Fa-f]{6})',
-        re.S)
-    try:
-        names = sorted(os.listdir(HYPR_DIR))
-    except OSError:
-        return None
-    for name in names:
-        if not name.endswith(".lua") or name == "browser-switcher.lua":
-            continue
-        try:
-            with open(os.path.join(HYPR_DIR, name), "r", encoding="utf-8", errors="replace") as fh:
-                match = pattern.search(fh.read())
-        except OSError:
-            continue
-        if match:
-            return "#" + match.group(1).upper()
-    return None
-
-
-def cmd_adopt(args):
-    """Register an existing hand-made launcher without rewriting a byte of it.
-
-    Adopted targets are marked `managed: false`, which makes every generator
-    in this program skip them: no desktop entry is written, no icon is
-    re-badged, no Hyprland rule is emitted. The switcher just learns how to
-    launch them.
-    """
-    cfg = load_config()
-    candidates = discover_candidates(cfg)
-    by_file = {c["desktopFile"]: c for c in candidates}
-
-    if args.desktop_file:
-        wanted = [args.desktop_file if args.desktop_file.endswith(".desktop")
-                  else args.desktop_file + ".desktop"]
-    else:
-        wanted = list(by_file.keys())
-    if not wanted:
-        info("nothing to adopt")
-        return
-
-    adopted = []
-    for filename in wanted:
-        candidate = by_file.get(filename)
-        if not candidate:
-            warn(f"{filename} is not an adoptable launcher (already registered, or not a profile launcher)")
-            continue
-        name = args.name if (args.name and len(wanted) == 1) else candidate["name"]
-        # "Chromium — acme" is a fine desktop-entry name but a poor menu row;
-        # the distinguishing half is what belongs in the switcher.
-        short = re.split(r"\s+[—–-]\s+", name)
-        display = short[-1].strip() if len(short) > 1 else name
-        target_id = unique_id(cfg, slugify(candidate["wmClass"].split("-")[-1] or display))
-        cfg["targets"].append({
-            "id": target_id,
-            "name": display,
-            "browser": candidate["browser"],
-            "profileDir": candidate["profileDir"],
-            "wmClass": candidate["wmClass"],
-            "color": norm_color(args.color if args.color != "#8AA2C8"
-                                else existing_border_color(candidate["wmClass"]) or args.color,
-                                "#8AA2C8"),
-            "badge": None,
-            "icon": candidate["icon"] or None,
-            "desktopFile": candidate["desktopFile"],
-            "managed": False,
-        })
-        adopted.append(display)
-
-    if not adopted:
-        return
-    save_config(cfg)
-    if not active_id():
-        set_active(cfg["targets"][0]["id"])
-    apply_all(cfg, quiet=True)
-    info("adopted: " + ", ".join(adopted))
-    info("these are marked unmanaged — their desktop entries, icons and window rules are left untouched")
-
-
 # --------------------------------------------------------------------------- install
 
 def is_default_browser():
@@ -1222,38 +996,11 @@ def cmd_install(args):
             else:
                 info("browser-switcher.desktop is now the default web browser")
 
-    if args.hyprland:
-        wire_hyprland()
-
     apply_all(cfg, quiet=True)
     info("installed")
     if not args.set_default:
         info("run with --set-default to route links here, or set 'Browser Switcher' "
              "as your default browser manually")
-
-
-def wire_hyprland():
-    """Append the require line to hyprland.lua, once, with a backup."""
-    if not os.path.isfile(HYPR_MAIN):
-        warn(f"{HYPR_MAIN} not found — skipping Hyprland wiring")
-        return
-    try:
-        with open(HYPR_MAIN, "r", encoding="utf-8") as fh:
-            content = fh.read()
-    except OSError as exc:
-        warn(f"cannot read {HYPR_MAIN}: {exc}")
-        return
-    if HYPR_REQUIRE in content:
-        return
-    shutil.copyfile(HYPR_MAIN, HYPR_MAIN + ".bak.browser-switcher")
-    addition = (
-        "\n-- Added by browser-switcher: per-client browser window borders.\n"
-        "-- Loaded last so it wins over earlier rules for the same classes.\n"
-        f"{HYPR_REQUIRE}\n"
-    )
-    with open(HYPR_MAIN, "a", encoding="utf-8") as fh:
-        fh.write(addition)
-    info(f"added {HYPR_REQUIRE} to {HYPR_MAIN} (backup: {os.path.basename(HYPR_MAIN)}.bak.browser-switcher)")
 
 
 def cmd_uninstall(args):
@@ -1276,26 +1023,13 @@ def cmd_uninstall(args):
 
     remove_quiet(ROUTER_DESKTOP)
     for target in cfg["targets"]:
-        if target.get("managed"):
-            remove_quiet(os.path.join(APPS_DIR, desktop_filename(target)))
-            for size in ICON_SIZES:
-                remove_quiet(os.path.join(ICON_ROOT, f"{size}x{size}", "apps",
-                                          f"{icon_name(target)}.png"))
+        remove_quiet(os.path.join(APPS_DIR, desktop_filename(target)))
+        for size in ICON_SIZES:
+            remove_quiet(os.path.join(ICON_ROOT, f"{size}x{size}", "apps",
+                                      f"{icon_name(target)}.png"))
+    # Nothing to unwire: the rules file was auto-discovered, never referenced.
     remove_quiet(HYPR_RULES)
-
-    if os.path.isfile(HYPR_MAIN):
-        try:
-            with open(HYPR_MAIN, "r", encoding="utf-8") as fh:
-                lines = fh.readlines()
-            kept = [ln for ln in lines
-                    if HYPR_REQUIRE not in ln and "Added by browser-switcher" not in ln
-                    and "Loaded last so it wins" not in ln]
-            if len(kept) != len(lines):
-                write_atomic(HYPR_MAIN, "".join(kept))
-                info(f"removed the browser-switcher require from {HYPR_MAIN}")
-        except OSError:
-            pass
-
+    reload_hyprland()
     refresh_desktop_database()
     info("uninstalled — config kept at " + CONFIG_FILE)
     if args.purge:
@@ -1337,20 +1071,23 @@ def cmd_doctor(args):
         profile = target.get("profileDir")
         if profile:
             check(f"target {target['id']}: profile dir exists", os.path.isdir(profile), profile)
-        if target.get("managed"):
-            entry = os.path.join(APPS_DIR, desktop_filename(target))
-            check(f"target {target['id']}: desktop entry", os.path.isfile(entry), entry)
-            check(f"target {target['id']}: badged icon", icon_exists(icon_name(target)))
+        entry = os.path.join(APPS_DIR, desktop_filename(target))
+        check(f"target {target['id']}: desktop entry", os.path.isfile(entry), entry)
+        check(f"target {target['id']}: badged icon", icon_exists(icon_name(target)))
 
+    check("Hyprland window rules generated", os.path.isfile(HYPR_RULES), HYPR_RULES)
     if os.path.isfile(HYPR_MAIN):
+        # The rules only load because Omarchy's stock hyprland.lua requires
+        # default.hypr.toggles, which auto-loads this directory. A user who
+        # deleted that line gets colourless borders and no other symptom, so
+        # name it explicitly rather than leaving them to guess.
         try:
             with open(HYPR_MAIN, "r", encoding="utf-8") as fh:
-                wired = HYPR_REQUIRE in fh.read()
+                wired = "default.hypr.toggles" in fh.read()
         except OSError:
             wired = False
-        check("hyprland.lua requires the generated rules", wired,
-              f"add {HYPR_REQUIRE}")
-        check("generated Hyprland rules exist", os.path.isfile(HYPR_RULES), HYPR_RULES)
+        check("hyprland.lua loads Omarchy's generated-Lua directory", wired,
+              "" if wired else 'needs require("default.hypr.toggles")')
 
     print()
     sys.exit(0 if ok else 1)
@@ -1434,21 +1171,9 @@ def build_parser():
     p.add_argument("target")
     p.set_defaults(func=cmd_pick_color)
 
-    p = sub.add_parser("discover", help="find hand-made profile launchers not yet registered")
-    p.add_argument("--json", action="store_true")
-    p.set_defaults(func=cmd_discover)
-
-    p = sub.add_parser("adopt", help="register an existing launcher without modifying it")
-    p.add_argument("desktop_file", nargs="?", help="default: adopt everything discoverable")
-    p.add_argument("--name")
-    p.add_argument("--color", default="#8AA2C8")
-    p.set_defaults(func=cmd_adopt)
-
     p = sub.add_parser("install", help="install the router and register it")
     p.add_argument("--set-default", action="store_true",
                    help="make browser-switcher the default web browser")
-    p.add_argument("--hyprland", action="store_true",
-                   help="add the generated window rules to hyprland.lua")
     p.set_defaults(func=cmd_install)
 
     p = sub.add_parser("uninstall", help="remove generated files and restore the previous default")

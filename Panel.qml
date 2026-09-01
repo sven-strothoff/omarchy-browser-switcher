@@ -437,7 +437,7 @@ Panel {
               textFormat: Text.PlainText
               width: parent.width
               wrapMode: Text.WordWrap
-              text: "New clients get their own browser data directory, a badged icon and a coloured window border. Existing hand-made launchers are picked up with: browser-switcher adopt"
+              text: "Each client gets its own browser data directory, a badged icon and a coloured window border."
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -504,7 +504,6 @@ Panel {
             if (!switchRow.target) return ""
             var parts = [String(switchRow.target.browser || "")]
             if (switchRow.target.available === false) parts.push("not installed")
-            else if (switchRow.target.managed === false) parts.push("adopted")
             return parts.join(" · ")
           }
           color: switchRow.target && switchRow.target.available === false ? root.urgent : root.dim
