@@ -194,6 +194,15 @@ def launch_argv(target, urls, new_window):
 
     argv = [binary]
     env = {}
+
+    # A system browser is launched exactly as the system would launch it: its
+    # own default profile, its own app_id, no flags of ours.
+    if not is_client(target):
+        if new_window:
+            argv.append("--new-window")
+        argv += list(urls)
+        return argv, env
+
     profile = target.get("profileDir") or ""
     wm_class = target.get("wmClass") or f"{key}-{target['id']}"
 
@@ -266,6 +275,17 @@ def write_atomic(path, content):
         except OSError:
             pass
         raise
+
+
+def is_client(target):
+    """Client targets own an isolated profile; system browsers are plain.
+
+    A system browser entry exists only so the switcher can point links back at
+    an ordinary browser install. It has no profile of its own, no custom window
+    class, no generated desktop entry and no badged icon — so every generator
+    skips it and it can't be given a colour or logo.
+    """
+    return str(target.get("kind", "client")) != "browser"
 
 
 def find_target(cfg, ident):
@@ -458,7 +478,12 @@ def resolve_icon_path(target):
     QML draws a file, not an icon-theme name, so the lookup that a desktop
     environment would normally do has to happen here.
     """
-    name = icon_name(target)
+    if is_client(target):
+        name = icon_name(target)
+    else:
+        name = BROWSERS.get(target.get("browser", "chromium"),
+                            BROWSERS["chromium"])["icon"]
+
     if os.path.isabs(name) and os.path.isfile(name):
         return name
 
@@ -600,7 +625,7 @@ def generate_hypr_rules(cfg):
         "",
     ]
 
-    rules = [t for t in cfg["targets"] if t.get("wmClass")]
+    rules = [t for t in cfg["targets"] if is_client(t) and t.get("wmClass")]
 
     safe = []
     for t in rules:
@@ -690,8 +715,9 @@ def refresh_desktop_database():
 def apply_all(cfg, quiet=False):
     generate_router_desktop()
     for target in cfg["targets"]:
-        generate_icons(target)
-        generate_desktop(target)
+        if is_client(target):
+            generate_icons(target)
+            generate_desktop(target)
     generate_hypr_rules(cfg)
     reload_hyprland()
     refresh_desktop_database()
@@ -784,7 +810,16 @@ def cmd_list(args):
         enriched = []
         for t in cfg["targets"]:
             row = dict(t)
-            row["iconPath"] = resolve_icon_path(t)
+            row["kind"] = "client" if is_client(t) else "browser"
+            icon = resolve_icon_path(t)
+            row["iconPath"] = icon
+            # The icon keeps one stable filename for its whole life, so the
+            # panel's Image would happily serve a cached pixmap after a
+            # re-badge. Hand it a version it can use to bust that cache.
+            try:
+                row["iconVersion"] = int(os.path.getmtime(icon)) if icon else 0
+            except OSError:
+                row["iconVersion"] = 0
             row["available"] = bool(browser_binary(t.get("browser", "chromium")))
             enriched.append(row)
         print(json.dumps({
@@ -800,8 +835,12 @@ def cmd_list(args):
         return
     for t in cfg["targets"]:
         mark = "*" if current and t["id"] == current["id"] else " "
-        print(f" {mark} {t['id']:<18} {t['name']:<22} {t.get('browser','chromium'):<14} "
-              f"{norm_color(t.get('color'))}")
+        if is_client(t):
+            print(f" {mark} {t['id']:<18} {t['name']:<22} {t.get('browser','chromium'):<14} "
+                  f"client   {norm_color(t.get('color'))}")
+        else:
+            print(f" {mark} {t['id']:<18} {t['name']:<22} {t.get('browser','chromium'):<14} "
+                  f"browser")
 
 
 def cmd_browsers(args):
@@ -848,6 +887,7 @@ def cmd_add(args):
         "wmClass": wm_class,
         "color": norm_color(args.color),
         "badge": badge,
+        "kind": "client",
     }
     cfg["targets"].append(target)
     save_config(cfg)
@@ -856,6 +896,49 @@ def cmd_add(args):
     if not active_id():
         set_active(target_id)
     info(f"added {name} ({target_id})")
+
+
+def cmd_add_browser(args):
+    """Register a plain system browser as a switch destination.
+
+    No name, colour or logo to supply: a system browser is whatever is already
+    installed, so the entry is just a pointer to it.
+    """
+    cfg = load_config()
+    key = args.browser
+    if key not in BROWSERS:
+        die(f"unknown browser {key!r} (see `{APP} browsers`)")
+    if not browser_binary(key):
+        die(f"{key} is not installed")
+
+    for t in cfg["targets"]:
+        if not is_client(t) and t.get("browser") == key:
+            die(f"{BROWSERS[key]['name']} is already in the switcher as {t['id']!r}")
+
+    target_id = unique_id(cfg, slugify(key))
+    cfg["targets"].append({
+        "id": target_id,
+        "name": args.name.strip() if args.name else BROWSERS[key]["name"],
+        "browser": key,
+        "kind": "browser",
+    })
+    save_config(cfg)
+    if not active_id():
+        set_active(target_id)
+    apply_all(cfg, quiet=True)
+    info(f"added {BROWSERS[key]['name']} ({target_id})")
+
+
+def cmd_addable_browsers(args):
+    """Installed browsers that are not already in the switcher as themselves."""
+    cfg = load_config()
+    taken = {t.get("browser") for t in cfg["targets"] if not is_client(t)}
+    rows = [b for b in installed_browsers() if b["id"] not in taken]
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return
+    for b in rows:
+        print(f"{b['id']:<16} {b['name']}")
 
 
 def existing_wm_class_owner(cfg, wm_class):
@@ -908,10 +991,11 @@ def cmd_remove(args):
     cfg["targets"] = [t for t in cfg["targets"] if t["id"] != target["id"]]
     save_config(cfg)
 
-    remove_quiet(os.path.join(APPS_DIR, desktop_filename(target)))
-    for size in ICON_SIZES:
-        remove_quiet(os.path.join(ICON_ROOT, f"{size}x{size}", "apps", f"{icon_name(target)}.png"))
-    remove_quiet(target.get("badge"))
+    if is_client(target):
+        remove_quiet(os.path.join(APPS_DIR, desktop_filename(target)))
+        for size in ICON_SIZES:
+            remove_quiet(os.path.join(ICON_ROOT, f"{size}x{size}", "apps", f"{icon_name(target)}.png"))
+        remove_quiet(target.get("badge"))
 
     if args.purge and target.get("profileDir", "").startswith(PROFILE_ROOT):
         shutil.rmtree(target["profileDir"], ignore_errors=True)
@@ -952,6 +1036,9 @@ def cmd_rename(args):
 def cmd_set(args):
     cfg = load_config()
     target = require_target(cfg, args.target)
+    if not is_client(target) and (args.color or args.icon or args.profile_dir or args.browser):
+        die(f"{target['id']!r} is a system browser entry: it has no colour, logo "
+            f"or profile of its own. Only --name applies.")
     changed = []
     if args.name:
         target["name"] = args.name.strip()
@@ -991,6 +1078,8 @@ def cmd_reorder(args):
 def cmd_pick_icon(args):
     cfg = load_config()
     target = require_target(cfg, args.target)
+    if not is_client(target):
+        die(f"{target['id']!r} is a system browser entry and uses the browser's own icon")
     exe = shutil.which("zenity")
     if not exe:
         die("zenity is not installed; pass a path with `set --icon PATH` instead")
@@ -1010,6 +1099,8 @@ def cmd_pick_icon(args):
 def cmd_pick_color(args):
     cfg = load_config()
     target = require_target(cfg, args.target)
+    if not is_client(target):
+        die(f"{target['id']!r} is a system browser entry and has no border colour")
     exe = shutil.which("zenity")
     if not exe:
         die("zenity is not installed; pass a value with `set --color '#RRGGBB'` instead")
@@ -1095,6 +1186,8 @@ def cmd_uninstall(args):
 
     remove_quiet(ROUTER_DESKTOP)
     for target in cfg["targets"]:
+        if not is_client(target):
+            continue
         remove_quiet(os.path.join(APPS_DIR, desktop_filename(target)))
         for size in ICON_SIZES:
             remove_quiet(os.path.join(ICON_ROOT, f"{size}x{size}", "apps",
@@ -1140,6 +1233,8 @@ def cmd_doctor(args):
         binary = browser_binary(target.get("browser", "chromium"))
         check(f"target {target['id']}: browser installed", bool(binary),
               target.get("browser", "chromium"))
+        if not is_client(target):
+            continue
         profile = target.get("profileDir")
         if profile:
             check(f"target {target['id']}: profile dir exists", os.path.isdir(profile), profile)
@@ -1200,7 +1295,7 @@ def build_parser():
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_browsers)
 
-    p = sub.add_parser("add", help="create a new client target")
+    p = sub.add_parser("add", help="create a new isolated client target")
     p.add_argument("--name", required=True)
     p.add_argument("--id", help="explicit slug (default: derived from the name)")
     p.add_argument("--browser", default="chromium")
@@ -1210,6 +1305,16 @@ def build_parser():
     p.add_argument("--wm-class")
     p.add_argument("--force", action="store_true", help="add even if the window class clashes")
     p.set_defaults(func=cmd_add)
+
+    p = sub.add_parser("add-browser", help="add a plain system browser as a destination")
+    p.add_argument("browser")
+    p.add_argument("--name", help="override the display name")
+    p.set_defaults(func=cmd_add_browser)
+
+    p = sub.add_parser("addable-browsers",
+                       help="installed browsers not yet in the switcher")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_addable_browsers)
 
     p = sub.add_parser("remove", help="delete a target")
     p.add_argument("target")

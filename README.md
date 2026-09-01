@@ -204,6 +204,42 @@ catcher and dismisses the panel instead. Anything that can be done in-panel is.
 Choosing a logo does need a real file dialog, so the panel closes itself first,
 hands over cleanly, and reopens on the manage view when you're done.
 
+### Two kinds of entry
+
+A **client** is an isolated session: its own browser data directory, a badged
+icon, a coloured window border, its own desktop entry. That is the case this
+plugin exists for.
+
+A **system browser** is just a pointer at a browser as it is already installed —
+its normal profile, its own icon, no window colouring, nothing generated for it
+at all. Useful for "send this link to plain Firefox" without inventing a client
+for it.
+
+```bash
+browser-switcher add --name "Acme"     # an isolated client
+browser-switcher add-browser firefox   # plain Firefox, as itself
+browser-switcher addable-browsers      # installed browsers not yet listed
+```
+
+Both appear in the switcher panel and both can be the active link destination.
+Colour and logo apply only to clients; asking for them on a system browser is
+refused rather than silently ignored.
+
+### Bar icon style
+
+The badged icon is the clearest signal of which client is live, but it is
+full-colour artwork sitting in a row of monochrome glyphs. The widget's
+`barIcon` setting picks how it presents:
+
+| Value | Look |
+|---|---|
+| `Theme` (default) | bar-coloured glyph with a small client-colour dot |
+| `Client colour` | the glyph itself tinted with the client's colour |
+| `Full colour` | the badged browser icon |
+
+Set it in `~/.config/omarchy/shell.json` on the widget's entry, e.g.
+`{ "id": "sven.browser-switcher", "barIcon": "Full colour" }`.
+
 **From the terminal**, which is the whole API:
 
 ```bash

@@ -20,9 +20,22 @@
     "defaultSection": "right",
     "defaults": {
       "showLabel": false,
-      "notifyOnSwitch": true
+      "notifyOnSwitch": true,
+      "barIcon": "Theme"
     },
     "schema": [
+      {
+        "key": "barIcon",
+        "type": "enum",
+        "label": "Bar icon style",
+        "options": [
+          "Theme",
+          "Client colour",
+          "Full colour"
+        ],
+        "defaultValue": "Theme",
+        "description": "Theme uses a bar-coloured glyph with a small client-colour dot. Client colour tints the glyph itself. Full colour shows the badged browser icon."
+      },
       {
         "key": "showLabel",
         "type": "boolean",

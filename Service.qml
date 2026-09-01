@@ -29,6 +29,9 @@ Item {
   // Ready-made {label, value} pairs for the add-client dropdown; only
   // browsers actually present on the system are offered.
   property var browserOptions: []
+  // Installed browsers not yet in the switcher as themselves, for the
+  // "add a system browser" row.
+  property var addableBrowsers: []
   property string activeId: ""
   property bool routerInstalled: false
   property bool isDefaultBrowser: false
@@ -74,6 +77,16 @@ Item {
       options.push({ label: String(browsers[i].name), value: String(browsers[i].id) })
     }
     browserOptions = options
+
+    var taken = {}
+    for (var j = 0; j < targets.length; j++) {
+      if (String(targets[j].kind) === "browser") taken[String(targets[j].browser)] = true
+    }
+    var addable = []
+    for (var k = 0; k < options.length; k++) {
+      if (!taken[options[k].value]) addable.push(options[k])
+    }
+    addableBrowsers = addable
 
     activeId = parsed.active ? String(parsed.active) : ""
     routerInstalled = parsed.installed === true
@@ -131,6 +144,8 @@ Item {
     pickerProcess.running = true
   }
   function reorder(targetId, direction) { run(["reorder", targetId, direction], "reorder") }
+
+  function addBrowser(browser) { run(["add-browser", browser], "add-browser") }
 
   function add(name, browser, color) {
     var args = ["add", "--name", name]

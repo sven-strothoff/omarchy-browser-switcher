@@ -41,6 +41,19 @@ Panel {
   // pixels apart and the row reads as misaligned.
   readonly property int controlH: Style.spacing.controlHeight
 
+  // How the bar widget presents the active client. The badged icon is the
+  // clearest signal of which client is live, but it is full-colour artwork
+  // sitting in a row of monochrome glyphs, so it is not the default.
+  //   theme  — bar-coloured glyph with a small client-colour dot
+  //   client — glyph tinted with the client's colour
+  //   icon   — the full-colour badged icon
+  readonly property string barIconMode: {
+    var v = String(root.setting("barIcon", "Theme")).toLowerCase()
+    if (v.indexOf("full") === 0 || v === "icon") return "icon"
+    if (v.indexOf("client") === 0 || v === "accent") return "client"
+    return "theme"
+  }
+
   // Border colours, chosen to stay distinguishable from each other as a thin
   // window border on both light and dark themes. The hex field below covers
   // any exact brand colour that isn't here.
@@ -60,6 +73,10 @@ Panel {
     if (!target) return ""
     var path = String(target.iconPath || "")
     return path.length > 0 ? "file://" + path : ""
+  }
+
+  function isClient(target) {
+    return !target || String(target.kind || "client") !== "browser"
   }
 
   function initials(target) {
@@ -187,29 +204,37 @@ Panel {
             height: Style.space(16)
             anchors.verticalCenter: parent.verticalCenter
 
-            Image {
-              id: barIcon
+            // Full-colour badged artwork.
+            TargetIcon {
               anchors.fill: parent
-              source: root.iconUrl(root.active)
-              sourceSize.width: 32
-              sourceSize.height: 32
-              fillMode: Image.PreserveAspectFit
-              smooth: true
-              visible: status === Image.Ready
+              visible: root.barIconMode === "icon"
+              target: root.active
+              plain: true
             }
 
-            // Fall back to a colour chip when no icon resolves — a target with
-            // no logo yet should still be identifiable in the bar.
-            Rectangle {
+            // Bar-native glyph. Tinted with the client colour, or left in the
+            // bar's own foreground with the colour carried by the dot below.
+            Text {
+              id: barGlyph
               anchors.centerIn: parent
-              width: Style.space(11)
+              visible: root.barIconMode !== "icon"
+              text: "󰖟"
+              color: root.barIconMode === "client" && root.active
+                ? root.targetColor(root.active)
+                : root.barForeground
+              font.family: root.fontFamily
+              font.pixelSize: Style.bar.iconFont
+            }
+
+            Rectangle {
+              visible: root.barIconMode === "theme" && root.active !== null
+                && root.isClient(root.active)
+              anchors.right: parent.right
+              anchors.bottom: parent.bottom
+              width: Style.space(6)
               height: width
               radius: width / 2
-              visible: !barIcon.visible
               color: root.active ? root.targetColor(root.active) : "transparent"
-              border.width: root.active ? 0 : 1
-              border.color: root.barForeground
-              opacity: root.active ? 1.0 : 0.6
             }
           }
 
@@ -293,29 +318,10 @@ Panel {
             fontFamily: root.fontFamily
 
             iconComponent: Component {
-              Item {
-                width: Style.font.display
-                height: Style.font.display
-
-                Image {
-                  id: heroIcon
-                  anchors.fill: parent
-                  source: root.iconUrl(root.active)
-                  sourceSize.width: 64
-                  sourceSize.height: 64
-                  fillMode: Image.PreserveAspectFit
-                  smooth: true
-                  visible: status === Image.Ready
-                }
-
-                Rectangle {
-                  anchors.fill: parent
-                  radius: width / 2
-                  visible: !heroIcon.visible
-                  color: root.active ? root.targetColor(root.active) : "transparent"
-                  border.width: root.active ? 0 : 1
-                  border.color: root.foreground
-                }
+              TargetIcon {
+                target: root.active
+                size: Style.font.display
+                plain: root.active === null
               }
             }
 
@@ -405,7 +411,7 @@ Panel {
             visible: root.manageMode && !switcher.cliMissing
 
             PanelSectionHeader {
-              text: "CONFIGURE CLIENTS"
+              text: "CONFIGURED BROWSERS"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -428,7 +434,7 @@ Panel {
             PanelSeparator { foreground: root.foreground }
 
             PanelSectionHeader {
-              text: "ADD A CLIENT"
+              text: "ADD AN ISOLATED CLIENT"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -493,6 +499,62 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
             }
+
+            // A plain browser, in its own default profile, as a switch
+            // destination. Nothing is generated for it — no profile, no icon,
+            // no window rule — so it needs no name, colour or logo either.
+            Column {
+              width: parent.width
+              spacing: Style.space(10)
+              visible: switcher.addableBrowsers.length > 0
+
+              PanelSeparator { foreground: root.foreground }
+
+              PanelSectionHeader {
+                text: "ADD A SYSTEM BROWSER"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              RowLayout {
+                width: parent.width
+                spacing: Style.space(6)
+
+                Dropdown {
+                  id: systemBrowser
+                  Layout.fillWidth: true
+                  Layout.preferredHeight: root.controlH
+                  Layout.alignment: Qt.AlignVCenter
+                  rowHeight: root.controlH
+                  showLabel: false
+                  fontFamily: root.fontFamily
+                  options: switcher.addableBrowsers
+                  value: switcher.addableBrowsers.length > 0
+                    ? switcher.addableBrowsers[0].value : ""
+                }
+
+                PanelActionButton {
+                  iconText: "󰐕"
+                  tooltipText: "Add system browser"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  size: root.controlH
+                  Layout.alignment: Qt.AlignVCenter
+                  enabled: systemBrowser.value !== ""
+                  onClicked: if (systemBrowser.value !== "") switcher.addBrowser(systemBrowser.value)
+                }
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "Opens in the browser's normal profile, with its own icon and no window colouring."
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+            }
           }
         }
       }
@@ -555,6 +617,7 @@ Panel {
             if (!switchRow.target) return ""
             var parts = [String(switchRow.target.browser || "")]
             if (switchRow.target.available === false) parts.push("not installed")
+            else if (!root.isClient(switchRow.target)) parts.push("system profile")
             return parts.join(" · ")
           }
           color: switchRow.target && switchRow.target.available === false ? root.urgent : root.dim
@@ -634,6 +697,25 @@ Panel {
     id: targetIcon
     property var target: null
     property real size: Style.space(20)
+    // `plain` drops the coloured-initial fallback, for the bar where a blank
+    // slot is better than a stand-in.
+    property bool plain: false
+
+    // The badged PNG keeps one filename for its whole life, so re-colouring a
+    // client rewrites the file without changing the URL and Qt happily serves
+    // the pixmap it already cached — the icon only caught up on a shell
+    // restart. Reload it by hand whenever the version the CLI reports moves.
+    readonly property int version: target ? Number(target.iconVersion || 0) : 0
+    readonly property string url: root.iconUrl(target)
+
+    onVersionChanged: reload()
+    onUrlChanged: reload()
+    Component.onCompleted: reload()
+
+    function reload() {
+      image.source = ""
+      image.source = targetIcon.url
+    }
 
     implicitWidth: size
     implicitHeight: size
@@ -641,7 +723,7 @@ Panel {
     Image {
       id: image
       anchors.fill: parent
-      source: root.iconUrl(targetIcon.target)
+      cache: false
       sourceSize.width: 64
       sourceSize.height: 64
       fillMode: Image.PreserveAspectFit
@@ -654,7 +736,7 @@ Panel {
     Rectangle {
       anchors.fill: parent
       radius: width / 2
-      visible: !image.visible
+      visible: !image.visible && !targetIcon.plain
       color: root.targetColor(targetIcon.target)
 
       Text {
@@ -668,7 +750,6 @@ Panel {
       }
     }
   }
-
   component ManageRow: Column {
     id: manageRow
     property var target: null
@@ -720,6 +801,7 @@ Panel {
         Layout.alignment: Qt.AlignVCenter
         implicitWidth: root.controlH
         implicitHeight: root.controlH
+        visible: root.isClient(manageRow.target)
 
         Rectangle {
           anchors.centerIn: parent
@@ -762,6 +844,7 @@ Panel {
         foreground: root.foreground
         fontFamily: root.fontFamily
         size: root.controlH
+        visible: root.isClient(manageRow.target)
         Layout.alignment: Qt.AlignVCenter
         onClicked: if (manageRow.target) root.chooseIcon(manageRow.target.id)
       }
@@ -783,7 +866,7 @@ Panel {
     // Colour editor, expanded in place under its own row. Everything here is
     // in-panel, so picking a colour never costs the panel its focus.
     Column {
-      visible: manageRow.editingColor
+      visible: manageRow.editingColor && root.isClient(manageRow.target)
       width: manageRow.width
       spacing: Style.space(6)
       topPadding: Style.space(2)
