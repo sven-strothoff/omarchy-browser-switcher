@@ -56,16 +56,7 @@ Panel {
   // Matched loosely, and deliberately: the stored value is a display label, so
   // this has to keep honouring the labels earlier versions wrote
   // ("Theme", "Client colour", "Full colour") as well as the current ones.
-  readonly property string barIconMode: {
-    var v = root.barIconSetting.toLowerCase()
-    if (v.indexOf("dot") >= 0 || v.indexOf("theme") >= 0) return "dot"
-    if (v.indexOf("no indicator") >= 0 || v.indexOf("plain") >= 0) return "plain"
-    if (v.indexOf("glyph") >= 0 || v.indexOf("tint") >= 0
-        || v.indexOf("accent") >= 0 || v.indexOf("client colour") >= 0
-        || v.indexOf("client color") >= 0) return "tinted"
-    if (v.indexOf("icon") >= 0 || v.indexOf("full") >= 0) return "icon"
-    return "dot"
-  }
+  readonly property string barIconMode: root.barIconModeFor(root.barIconSetting)
 
   // Border colours, chosen to stay distinguishable from each other as a thin
   // window border on both light and dark themes. The hex field beside the grid
@@ -77,6 +68,32 @@ Panel {
 
   readonly property var targets: switcher.targets
   readonly property var active: switcher.activeTarget
+
+  // Label -> mode, so the preview cells and the live bar agree on what each
+  // option means without duplicating the matching rules.
+  function barIconModeFor(label) {
+    var v = String(label || "").toLowerCase()
+    if (v.indexOf("dot") >= 0 || v.indexOf("theme") >= 0) return "dot"
+    if (v.indexOf("no indicator") >= 0 || v.indexOf("plain") >= 0) return "plain"
+    if (v.indexOf("glyph") >= 0 || v.indexOf("tint") >= 0
+        || v.indexOf("accent") >= 0 || v.indexOf("client colour") >= 0
+        || v.indexOf("client color") >= 0) return "tinted"
+    if (v.indexOf("icon") >= 0 || v.indexOf("full") >= 0) return "icon"
+    return "dot"
+  }
+
+  // Previews need a client to draw, otherwise three of the four options would
+  // look identical whenever a system browser happens to be active.
+  readonly property var previewTarget: {
+    if (isClient(active)) return active
+    for (var i = 0; i < targets.length; i++) {
+      if (isClient(targets[i])) return targets[i]
+    }
+    return active
+  }
+  readonly property color previewColor: {
+    return isClient(previewTarget) ? targetColor(previewTarget) : Color.accent
+  }
 
   function targetColor(target) {
     return target && target.color ? Qt.color(String(target.color)) : root.dim
@@ -232,7 +249,10 @@ Panel {
               anchors.centerIn: parent
               visible: root.barIconMode !== "icon"
               text: "󰖟"
-              color: root.barIconMode === "tinted" && root.active
+              // A system browser has no colour of its own, so "tinted" falls
+              // back to the bar's own foreground rather than to targetColor's
+              // grey placeholder — which just read as a slightly different grey.
+              color: root.barIconMode === "tinted" && root.isClient(root.active)
                 ? root.targetColor(root.active)
                 : root.barForeground
               font.family: root.fontFamily
@@ -577,19 +597,77 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            // Purely a visual preference, so it belongs where you can flip it
-            // and look at the bar, rather than in a JSON file behind a restart.
-            Dropdown {
-              id: barIconPicker
+            // A visual setting deserves a visual control: each cell renders
+            // exactly what the bar will look like, so the choice is made by
+            // looking rather than by reading four labels.
+            Row {
+              id: barIconRow
               width: parent.width
-              height: root.controlH
-              rowHeight: root.controlH
-              showLabel: false
-              fontFamily: root.fontFamily
-              options: root.barIconOptions
-              value: root.barIconSetting
-              onChanged: function(v) {
-                if (v !== root.barIconSetting) switcher.setBarIcon(v)
+              spacing: Style.space(6)
+
+              Repeater {
+                model: root.barIconOptions
+
+                CursorSurface {
+                  id: previewCell
+                  required property string modelData
+                  required property int index
+
+                  readonly property string mode: root.barIconModeFor(modelData)
+                  readonly property bool chosen: root.barIconMode === mode
+
+                  width: (barIconRow.width - Style.space(6) * 3) / 4
+                  implicitHeight: Style.space(34)
+                  current: chosen
+                  bordered: true
+                  foreground: root.foreground
+
+                  MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (!previewCell.chosen) switcher.setBarIcon(previewCell.modelData)
+
+                    PanelToolTip {
+                      visible: parent.containsMouse
+                      text: previewCell.modelData
+                      fontFamily: root.fontFamily
+                    }
+                  }
+
+                  Item {
+                    anchors.centerIn: parent
+                    width: Style.space(18)
+                    height: Style.space(18)
+
+                    TargetIcon {
+                      anchors.fill: parent
+                      visible: previewCell.mode === "icon"
+                      target: root.previewTarget
+                      plain: true
+                    }
+
+                    Text {
+                      anchors.centerIn: parent
+                      visible: previewCell.mode !== "icon"
+                      text: "󰖟"
+                      color: previewCell.mode === "tinted"
+                        ? root.previewColor : root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.icon
+                    }
+
+                    Rectangle {
+                      visible: previewCell.mode === "dot"
+                      anchors.right: parent.right
+                      anchors.bottom: parent.bottom
+                      width: Style.space(7)
+                      height: width
+                      radius: width / 2
+                      color: root.previewColor
+                    }
+                  }
+                }
               }
             }
 
@@ -597,7 +675,9 @@ Panel {
               textFormat: Text.PlainText
               width: parent.width
               wrapMode: Text.WordWrap
-              text: "How the bar shows which client is active. Later options are clearer at a glance; earlier ones sit more quietly beside the other bar icons."
+              text: root.barIconSetting + " — how the bar shows which client is active. "
+                + "Later options are clearer at a glance; earlier ones sit more quietly "
+                + "beside the other bar icons."
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

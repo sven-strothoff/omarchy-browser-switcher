@@ -246,10 +246,16 @@ full-colour artwork sitting in a row of monochrome glyphs. The widget's
 | `Coloured glyph` | the glyph itself tinted with the client's colour |
 | `Client icon` | the full-colour badged browser icon |
 
-Pick it from the manage view's **Bar icon** dropdown — it writes through
-`omarchy bar set`, so the change is immediate and persists in `shell.json`.
-Editing that file by hand works too:
+Pick it from the **Bar icon** row in the manage view: four cells, each drawing
+exactly what the bar will look like, so the choice is made by looking rather
+than by reading labels. It writes through `omarchy bar set`, so the change is
+immediate and persists in `shell.json`. Editing that file by hand works too:
 `{ "id": "sven.browser-switcher", "barIcon": "Client icon" }`.
+
+`Colour dot` and `Coloured glyph` have nothing to show for a system browser,
+which has no colour of its own — those fall back to the bar's own foreground so
+the glyph matches its neighbours exactly, rather than rendering a placeholder
+grey that just looks like a slightly wrong colour.
 
 Later options are clearer at a glance; earlier ones sit more quietly beside the
 other bar icons. Labels from earlier versions (`Theme`, `Client colour`,
