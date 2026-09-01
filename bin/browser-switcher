@@ -160,7 +160,7 @@ def installed_browsers():
     return out
 
 
-def launch_argv(target, urls, new_window):
+def launch_argv(target, urls, new_window, extra_flags=()):
     """Build (argv, env) that opens `urls` in `target`.
 
     The two families set the window's app_id differently, and both paths below
@@ -200,6 +200,7 @@ def launch_argv(target, urls, new_window):
     if not is_client(target):
         if new_window:
             argv.append("--new-window")
+        argv += list(extra_flags)
         argv += list(urls)
         return argv, env
 
@@ -218,6 +219,7 @@ def launch_argv(target, urls, new_window):
     if new_window:
         argv.append("--new-window")
 
+    argv += list(extra_flags)
     argv += list(urls)
     return argv, env
 
@@ -769,9 +771,11 @@ def cmd_open(args):
             binary = browser_binary(key)
             if binary:
                 warn("no targets configured — falling back to " + key)
-                os.execv(binary, [binary] + list(args.urls))
+                fallback = [binary] + list(getattr(args, "browser_flags", ())) + list(args.urls)
+                os.execv(binary, fallback)
         die("no targets configured and no browser found")
-    argv, env = launch_argv(target, args.urls, new_window=False)
+    argv, env = launch_argv(target, args.urls, new_window=False,
+                            extra_flags=getattr(args, "browser_flags", ()))
     exec_browser(argv, env)
 
 
@@ -1291,6 +1295,17 @@ def cmd_doctor(args):
         check(f"target {target['id']}: desktop entry", os.path.isfile(entry), entry)
         check(f"target {target['id']}: badged icon", icon_exists(icon_name(target)))
 
+    # $BROWSER is consulted directly by plenty of CLI tools, and by xdg-open
+    # when no scheme handler matches. Omarchy sets it to omarchy-launch-browser,
+    # which defers to xdg-settings and so lands back on us; a value naming one
+    # specific browser silently bypasses the switcher for those callers.
+    browser_env = os.environ.get("BROWSER", "")
+    if browser_env:
+        defers = ("omarchy-launch-browser" in browser_env
+                  or APP in browser_env)
+        check("$BROWSER routes through the switcher", defers,
+              "" if defers else f"BROWSER={browser_env} bypasses it for terminal tools")
+
     check("Hyprland window rules generated", os.path.isfile(HYPR_RULES), HYPR_RULES)
     if os.path.isfile(HYPR_MAIN):
         # The rules only load because Omarchy's stock hyprland.lua requires
@@ -1310,6 +1325,15 @@ def cmd_doctor(args):
 
 
 # --------------------------------------------------------------------------- cli
+
+# Anything with a scheme, an absolute/relative path, or a bare www host. Used
+# only to tell a URL from a mistyped subcommand, so it errs towards strict.
+URL_LIKE = re.compile(r"^(?:[a-zA-Z][a-zA-Z0-9+.\-]*:|/|\./|\.\./|~/|www\.)")
+
+
+def looks_like_url(value):
+    return bool(URL_LIKE.match(str(value)))
+
 
 def build_parser():
     parser = argparse.ArgumentParser(
@@ -1416,7 +1440,43 @@ def build_parser():
 
 
 def main():
-    args = build_parser().parse_args()
+    """Dispatch, treating a bare URL as an implicit `open`.
+
+    Two callers reach us without the `open` subcommand:
+
+    `omarchy-launch-browser` resolves the default browser through
+    xdg-settings, then extracts only the *first word* of that entry's Exec
+    line — so our `Exec=browser-switcher open %U` becomes plain
+    `browser-switcher <url>`, with the subcommand discarded.
+
+    And `$BROWSER` (which Omarchy sets to omarchy-launch-browser) is what
+    xdg-open falls back to under Hyprland, since XDG_CURRENT_DESKTOP=Hyprland
+    matches no known desktop and xdg-open takes its generic path. That is the
+    route a link clicked in the terminal actually travels.
+
+    So a bare URL has to work, or every terminal link and every CLI tool that
+    honours $BROWSER breaks. Unrecognised *flags* are forwarded to the browser
+    rather than rejected, because omarchy-launch-browser rewrites `--private`
+    into a browser-specific `--incognito` / `--private-window` on the way past.
+    """
+    argv = list(sys.argv[1:])
+    commands = set(build_parser()._subparsers._group_actions[0].choices)
+
+    if argv and argv[0] not in commands:
+        has_url = any(looks_like_url(a) for a in argv)
+        only_flags = all(a.startswith("-") for a in argv)
+        # A mistyped subcommand still reaches argparse and gets a proper error.
+        if has_url or only_flags:
+            argv = ["open"] + argv
+
+    parser = build_parser()
+    if argv and argv[0] == "open":
+        args, extra = parser.parse_known_args(argv)
+        args.browser_flags = [a for a in extra if a.startswith("-")]
+        args.urls = list(args.urls) + [a for a in extra if not a.startswith("-")]
+    else:
+        args = parser.parse_args(argv)
+        args.browser_flags = []
     args.func(args)
 
 

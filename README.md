@@ -28,6 +28,35 @@ Switching is then a single small write, not a rewrite of `mimeapps.list`. It
 takes effect instantly, for every app, with nothing to restart and no cache to
 race against.
 
+### Both link sources reach it
+
+A link clicked in a GUI app and a link clicked in the terminal travel different
+routes, and only one of them parses the desktop entry properly.
+
+| Source | Route | What actually runs |
+|---|---|---|
+| GUI app | portal / GIO → mimeapps | the full `Exec` line, subcommand intact |
+| Terminal (foot, alacritty, …) | `xdg-open` → generic path | **first word of `Exec`** plus the expanded `%U` |
+| CLI tools, Omarchy keybinds | `$BROWSER` → `omarchy-launch-browser` | **first word of `Exec`** plus the URL |
+
+Both of the lower rows discard the `open` subcommand: `xdg-open`'s
+`search_desktop_file` takes `Exec | first_word` and keeps only the last field
+(`%U`) as the argument, and `omarchy-launch-browser` does the same
+`sed 's/^Exec=\([^ ]*\).*/\1/'`. Under Hyprland this is the normal path, since
+`XDG_CURRENT_DESKTOP=Hyprland` matches no desktop `xdg-open` knows, so it falls
+to its generic handling.
+
+So `browser-switcher <url>` — a bare URL with no subcommand — is treated as
+`open`, and that is what makes terminal links work. Unrecognised flags are
+forwarded to the browser rather than rejected, because `omarchy-launch-browser`
+rewrites `--private` into a browser-specific `--incognito` / `--private-window`
+on the way past. A mistyped subcommand still gets a normal argparse error
+rather than being handed to the browser as if it were a URL.
+
+`doctor` also checks that `$BROWSER` still resolves back to the switcher, since
+setting it to one specific browser silently bypasses everything above for the
+tools that read it.
+
 Isolation is by **data directory**, not Chromium profile. Profiles share far too
 much to serve as a boundary between clients; a separate `--user-data-dir` is a
 genuine separation — separate cookies, separate keyring entries, separate
