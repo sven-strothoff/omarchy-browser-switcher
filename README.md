@@ -427,7 +427,20 @@ the control looks inert. Ours notes when a close happened and swallows exactly
 the click that caused it, clearing the mark immediately so the next click still
 opens normally.
 
-Both worth reporting upstream.
+Both are already reported upstream, so this file can go once they land:
+
+| Bug | Upstream |
+|---|---|
+| popup `implicitHeight` omits its own padding | [omacom/omarchy#7476](https://github.com/omacom/omarchy/issues/7476) — open issue, with a proposed fix |
+| clicking the trigger reopens instead of dismissing | [omacom/omarchy#6725](https://github.com/omacom/omarchy/pull/6725) — open PR, also covers `MultiSelect` and `SearchableDropdown` |
+
+Note #7476 describes the deficit through a different symptom — the last option
+being clipped — and does not mention the hover-scroll, which comes from the row
+delegate assigning `currentIndex` on hover so `ListView` scrolls to keep the
+current row visible. Same root cause either way.
+
+(Omarchy moved from `basecamp/omarchy` to `omacom/omarchy`; the package metadata
+still points at the old path, and GitHub search does not follow that redirect.)
 
 The CLI is the single source of truth. The panel shells out to it for every read
 and every mutation, so the bar, a terminal and a keybind cannot disagree about

@@ -19,6 +19,10 @@ import qs.Ui
 // Column: nothing here tracks a current index for the view to chase, so there
 // is no mechanism left to scroll. The Flickable only becomes interactive if
 // the list genuinely outgrows the cap.
+//
+// Both defects are filed upstream, so this file can go once they land:
+//   omacom/omarchy#7476  the padding/implicitHeight deficit (open issue)
+//   omacom/omarchy#6725  click-to-dismiss reopening (open PR)
 Item {
   id: root
 
