@@ -108,6 +108,10 @@ Item {
   // optimistically patch local state — switching is fast enough that a
   // wrong-then-corrected UI would be more jarring than a brief wait.
 
+  // Only for commands that exit on their own. Anything that execs into a
+  // long-lived program (launch) must go out detached instead, or it holds the
+  // queue for as long as that program lives.
+  //
   // Actions queue rather than being dropped. Previously a second action
   // arriving while one was in flight was silently discarded, so clicking a
   // colour during a slower command simply did nothing — and the slower the
@@ -162,7 +166,14 @@ Item {
     use(targets[next].id)
   }
 
-  function launch(targetId) { run(["launch", targetId], "launch") }
+  // Detached, and deliberately not through run(): `launch` ends in an execv,
+  // so the process *becomes* the browser and does not exit until that browser
+  // window is closed. Routed through the shared action process it pinned the
+  // queue for the lifetime of the browser — every later action sat waiting,
+  // then all landed at once the moment the window closed.
+  function launch(targetId) {
+    Quickshell.execDetached([cli, "launch", targetId])
+  }
   function rename(targetId, name) { run(["rename", targetId, name], "rename") }
   function remove(targetId) { run(["remove", targetId], "remove") }
   function setColor(targetId, hex) { run(["set", targetId, "--color", hex], "set-color") }
