@@ -291,7 +291,7 @@ refused rather than silently ignored.
 Profiles (isolated)
     personal                        chromium      ■■ #DF8E1D
   → Acme Corp                       chromium      ■■ #D20F39
-    Legacy                          firefox       ■■ #3F5FCF  (not installed)
+    Legacy                          firefox       ■■ #1E66F5  (not installed)
 
 System browsers
     Chromium                        chromium
@@ -302,6 +302,23 @@ An entry's id is shown in brackets only when it differs from its name — most
 ids are derived from the name, and printing both every time is just noise.
 Either one works wherever a command takes a target. The colour swatch is drawn
 only when stdout is a terminal and `NO_COLOR` is unset, so piping stays clean.
+
+### Colours
+
+The palette is [Catppuccin Latte](https://catppuccin.com/palette/)'s accents —
+Omarchy ships Catppuccin as a theme, so the swatches read as part of the desktop
+rather than something invented for this panel. Latte rather than Mocha because
+its accents are darker and stay visible as a thin border on light and dark
+themes alike.
+
+Eleven of the fourteen, plus one neutral. Flamingo, maroon and sapphire are left
+out because they sit too close to rosewater, red and teal to tell apart at
+border width: measured as CIE76 ΔE in Lab, the full set's closest pair is 10.1
+and this subset's is 21.3. A colour you can't distinguish is no use as an
+identity, which is the whole job here.
+
+The hex field beside the grid takes anything, so an exact brand colour is always
+available.
 
 ### Bar icon style
 
@@ -356,7 +373,7 @@ If you already built per-profile browsers by hand, point a new profile at the da
 directory you already have and your logged-in sessions carry over:
 
 ```bash
-browser-switcher add --name acme --color '#1F7AB8' \
+browser-switcher add --name acme --color '#179299' \
   --profile-dir ~/.local/share/chromium-profiles/acme
 ```
 

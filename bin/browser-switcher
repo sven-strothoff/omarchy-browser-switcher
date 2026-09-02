@@ -365,7 +365,7 @@ def active_target(cfg):
 
 # --------------------------------------------------------------------------- colors
 
-def norm_color(value, fallback="#8AA2C8"):
+def norm_color(value, fallback="#8C8FA1"):
     s = str(value or "").strip()
     m = re.match(r"^#?([0-9A-Fa-f]{6})$", s)
     if m:
@@ -1464,7 +1464,7 @@ def build_parser():
     p.add_argument("--name", required=True)
     p.add_argument("--id", help="explicit slug (default: derived from the name)")
     p.add_argument("--browser", default="chromium")
-    p.add_argument("--color", default="#8AA2C8")
+    p.add_argument("--color", default="#8C8FA1")
     p.add_argument("--icon", help="path to a logo image to badge onto the browser icon")
     p.add_argument("--profile-dir")
     p.add_argument("--wm-class")

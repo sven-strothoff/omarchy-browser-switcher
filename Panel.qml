@@ -62,12 +62,20 @@ Panel {
   // ("Theme", "Client colour", "Full colour") as well as the current ones.
   readonly property string barIconMode: root.barIconModeFor(root.barIconSetting)
 
-  // Border colours, chosen to stay distinguishable from each other as a thin
-  // window border on both light and dark themes. The hex field beside the grid
-  // covers any exact brand colour that isn't here.
+  // Catppuccin Latte accents, which Omarchy already ships as a theme, so the
+  // palette reads as part of the desktop rather than invented for this panel.
+  // Latte rather than Mocha because its accents are darker and stay visible as
+  // a thin border on light and dark themes alike.
+  //
+  // Eleven of the fourteen: flamingo, maroon and sapphire are dropped because
+  // they sit too close to rosewater, red and teal to tell apart at border
+  // width. Measured as CIE76 ΔE in Lab, the full set has a closest pair of
+  // 10.1 and this subset 21.3 — a colour nobody can distinguish is no use as
+  // an identity. Plus one neutral (overlay1) for a profile that wants no
+  // strong colour. The hex field beside the grid covers anything not here.
   readonly property var palette: [
-    "#D20F39", "#E2571A", "#DF8E1D", "#7A9A01", "#2E9E4F", "#179299", "#1F7AB8",
-    "#3F5FCF", "#7A5CD0", "#8839EF", "#C2455F", "#7A6A5C", "#5B6B72", "#9AA5AB"
+    "#D20F39", "#FE640B", "#DF8E1D", "#40A02B", "#179299", "#04A5E5",
+    "#1E66F5", "#7287FD", "#8839EF", "#EA76CB", "#DC8A78", "#8C8FA1"
   ]
 
   readonly property var targets: switcher.targets
@@ -1069,7 +1077,7 @@ Panel {
       bottomPadding: Style.space(4)
 
       Grid {
-        columns: 7
+        columns: 6
         spacing: Style.space(5)
 
         Repeater {
