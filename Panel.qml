@@ -945,6 +945,12 @@ Panel {
       fillMode: Image.PreserveAspectFit
       smooth: true
       visible: status === Image.Ready
+
+      // Removing a target deletes its icon while the panel may still be
+      // holding the pre-refresh copy of that target, so the load fails and
+      // every Image instance logs it. Drop the source on error: the fallback
+      // renders, and the shell log stays readable.
+      onStatusChanged: if (status === Image.Error) source = ""
     }
 
     // Coloured initial as the stand-in, so every row reads the same shape
