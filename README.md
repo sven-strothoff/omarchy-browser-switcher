@@ -289,7 +289,7 @@ refused rather than silently ignored.
 
 ```
 Profiles (isolated)
-    personal                      chromium      ■■ #DF8E1D
+    personal                        chromium      ■■ #DF8E1D
   → Acme Corp                       chromium      ■■ #D20F39
     Legacy                          firefox       ■■ #3F5FCF  (not installed)
 
@@ -356,7 +356,7 @@ If you already built per-profile browsers by hand, point a new profile at the da
 directory you already have and your logged-in sessions carry over:
 
 ```bash
-browser-switcher add --name acme --color '#179299' \
+browser-switcher add --name acme --color '#1F7AB8' \
   --profile-dir ~/.local/share/chromium-profiles/acme
 ```
 
