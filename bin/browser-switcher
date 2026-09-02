@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""browser-switcher — route opened URLs to a chosen browser / client profile.
+"""browser-switcher — route opened URLs to a chosen browser or browser profile.
 
 The design in one paragraph: a single *router* desktop entry
 (`browser-switcher.desktop`) is registered once as the system's default web
@@ -80,7 +80,7 @@ ROUTER_DESKTOP = os.path.join(APPS_DIR, "browser-switcher.desktop")
 # recognise (Vivaldi, LibreWolf) for anyone who installed them by hand.
 #
 # `family` decides three things that genuinely differ: how the profile is
-# selected, how the window gets a per-client app_id, and which of Omarchy's
+# selected, how the window gets a per-profile app_id, and which of Omarchy's
 # two parity rules the generated Hyprland rule has to mirror.
 BROWSERS = {
     "chromium": {
@@ -177,7 +177,7 @@ def launch_argv(target, urls, new_window, extra_flags=()):
     Tested with Zen: launching with `--class=zen-probe-class` still produced
     app_id "zen". The app_id comes from MOZ_APP_REMOTINGNAME instead, which
     does work (same test produced "zen-acme"). Without it every Firefox-family
-    client would share one app_id, so no per-client border colour could match
+    profile would share one app_id, so no per-profile border colour could match
     and StartupWMClass would be wrong for all of them.
 
     Isolation itself comes from `--profile`, not from the remoting name:
@@ -185,8 +185,8 @@ def launch_argv(target, urls, new_window, extra_flags=()):
     they share a remoting name. So the remoting name is about window identity,
     not about keeping sessions apart.
 
-    Opening a link deliberately omits --new-window so the client's existing
-    window is reused — confirmed: relaunching a running client with a URL
+    Opening a link deliberately omits --new-window so the profile's existing
+    window is reused — confirmed: relaunching a running profile with a URL
     hands it to that instance and spawns no new process.
     """
     key = target.get("browser", "chromium")
@@ -200,7 +200,7 @@ def launch_argv(target, urls, new_window, extra_flags=()):
 
     # A system browser is launched exactly as the system would launch it: its
     # own default profile, its own app_id, no flags of ours.
-    if not is_client(target):
+    if not is_profile(target):
         if new_window:
             argv.append("--new-window")
         argv += list(extra_flags)
@@ -236,6 +236,10 @@ def exec_browser(argv, env):
 
 # --------------------------------------------------------------------------- config
 
+KIND_PROFILE = "profile"
+KIND_BROWSER = "browser"
+
+
 def default_config():
     return {"version": 1, "targets": []}
 
@@ -253,6 +257,12 @@ def load_config():
     data.setdefault("version", 1)
     if not isinstance(data.get("targets"), list):
         data["targets"] = []
+    # "client" was the old name for a profile. Rewrite it in memory so the rest
+    # of the program only ever sees one spelling; the next save persists it.
+    for target in data["targets"]:
+        if isinstance(target, dict):
+            target["kind"] = KIND_BROWSER if str(
+                target.get("kind", KIND_PROFILE)) == KIND_BROWSER else KIND_PROFILE
     return data
 
 
@@ -282,15 +292,18 @@ def write_atomic(path, content):
         raise
 
 
-def is_client(target):
-    """Client targets own an isolated profile; system browsers are plain.
+def is_profile(target):
+    """Profile targets own an isolated browser directory; browsers are plain.
 
     A system browser entry exists only so the switcher can point links back at
-    an ordinary browser install. It has no profile of its own, no custom window
-    class, no generated desktop entry and no badged icon — so every generator
-    skips it and it can't be given a colour or logo.
+    an ordinary browser install. It has no directory of its own, no custom
+    window class, no generated desktop entry and no badged icon — so every
+    generator skips it and it can't be given a colour or logo.
+
+    Anything that is not explicitly "browser" counts as a profile, which is
+    also how configs written by earlier versions (kind: "client") keep working.
     """
-    return str(target.get("kind", "client")) != "browser"
+    return str(target.get("kind", KIND_PROFILE)) != KIND_BROWSER
 
 
 def find_target(cfg, ident):
@@ -421,7 +434,7 @@ def magick_argv():
 def render_icon(browser_key, badge_png, color, size, out_path):
     """Composite `badge_png` (or a plain colour dot) onto the browser icon.
 
-    The badge is drawn on a filled disc in the client colour, so a target is
+    The badge is drawn on a filled disc in the profile colour, so a target is
     identifiable at 16px even when its logo is illegible at that size, and so
     a target with no logo at all still gets a distinct mark.
     """
@@ -438,7 +451,7 @@ def render_icon(browser_key, badge_png, color, size, out_path):
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         disc_png = os.path.join(tmp, "disc.png")
-        # Filled circle in the client colour = the badge backing plate.
+        # Filled circle in the profile colour = the badge backing plate.
         run_quiet(magick_argv() + [
             "-size", f"{disc}x{disc}", "xc:none",
             "-fill", color, "-draw", f"circle {radius},{radius} {radius},0",
@@ -483,7 +496,7 @@ def resolve_icon_path(target):
     QML draws a file, not an icon-theme name, so the lookup that a desktop
     environment would normally do has to happen here.
     """
-    if is_client(target):
+    if is_profile(target):
         name = icon_name(target)
     else:
         name = BROWSERS.get(target.get("browser", "chromium"),
@@ -551,14 +564,14 @@ Type=Application
 Version=1.0
 Name={spec['name']} — {target['name']}
 GenericName=Web Browser
-Comment={spec['name']} running the isolated {target['name']} profile
+Comment={spec['name']} in the isolated {target['name']} profile
 Exec={shlex.quote(self_path())} launch {shlex.quote(target['id'])} %U
 Icon={icon}
 Terminal=false
 StartupNotify=true
 StartupWMClass={target.get('wmClass', key + '-' + target['id'])}
 Categories=Network;WebBrowser;
-Keywords={key};browser;client;profile;{target['id']};
+Keywords={key};browser;profile;{target['id']};
 MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
 """
     write_atomic(os.path.join(APPS_DIR, desktop_filename(target)), body)
@@ -624,13 +637,13 @@ def generate_hypr_rules(cfg):
     lines = [
         f"-- {GENERATED_BANNER}",
         "--",
-        "-- Per-client browser windows get their client's brand colour as the",
+        "-- Each profile's windows get that profile's brand colour as the",
         "-- window border, so which session a window belongs to is obvious",
         "-- without reading the tab strip.",
         "",
     ]
 
-    rules = [t for t in cfg["targets"] if is_client(t) and t.get("wmClass")]
+    rules = [t for t in cfg["targets"] if is_profile(t) and t.get("wmClass")]
 
     safe = []
     for t in rules:
@@ -647,7 +660,7 @@ def generate_hypr_rules(cfg):
         return
 
     # Parity with Omarchy's own browser rules. Its match:class patterns are
-    # full-match regexes, so a custom per-client app_id like "chromium-acme"
+    # full-match regexes, so a custom per-profile app_id like "chromium-acme"
     # misses them and would keep the generic default-opacity treatment. We
     # re-apply the right one per family -- and they are not the same rule:
     # chromium-based browsers get tile=true, firefox-based ones do not.
@@ -665,7 +678,7 @@ def generate_hypr_rules(cfg):
 
     lines += [
         "-- Omarchy's browser rules match on a full-match regex, so these custom",
-        "-- per-client classes miss them. Re-apply each family's treatment, which",
+        "-- per-profile classes miss them. Re-apply each family's treatment, which",
         "-- differs: chromium-based browsers tile, firefox-based ones do not.",
     ]
     for family, spec in families.items():
@@ -682,8 +695,8 @@ def generate_hypr_rules(cfg):
         lines.append("")
 
     lines += [
-        "-- Client identity colours: active border, then a dimmed inactive one",
-        "-- so an unfocused window still shows which client it belongs to.",
+        "-- Profile identity colours: active border, then a dimmed inactive one",
+        "-- so an unfocused window still shows which profile it belongs to.",
     ]
     for t in rules:
         active = hex_digits(t.get("color"))
@@ -720,7 +733,7 @@ def refresh_desktop_database():
 def apply_all(cfg, quiet=False):
     generate_router_desktop()
     for target in cfg["targets"]:
-        if is_client(target):
+        if is_profile(target):
             generate_icons(target)
             generate_desktop(target)
     generate_hypr_rules(cfg)
@@ -797,7 +810,7 @@ def cmd_use(args):
         info(f"links now open in {target['name']}")
     if args.notify:
         # resolve_icon_path covers both kinds: the generated badge for a
-        # client, the browser's own stock icon for a system browser.
+        # profile, the browser's own stock icon for a system browser.
         notify("Browser switched", f"Links now open in {target['name']}",
                resolve_icon_path(target))
 
@@ -826,7 +839,7 @@ def cmd_list(args):
         enriched = []
         for t in cfg["targets"]:
             row = dict(t)
-            row["kind"] = "client" if is_client(t) else "browser"
+            row["kind"] = KIND_PROFILE if is_profile(t) else KIND_BROWSER
             icon = resolve_icon_path(t)
             row["iconPath"] = icon
             # The icon keeps one stable filename for its whole life, so the
@@ -848,12 +861,12 @@ def cmd_list(args):
         return
     if not cfg["targets"]:
         print("Nothing configured yet.")
-        print("  browser-switcher add --name NAME     an isolated client")
+        print("  browser-switcher add --name NAME     an isolated profile")
         print("  browser-switcher add-browser NAME    a browser as itself")
         return
 
-    clients = [t for t in cfg["targets"] if is_client(t)]
-    systems = [t for t in cfg["targets"] if not is_client(t)]
+    profiles = [t for t in cfg["targets"] if is_profile(t)]
+    systems = [t for t in cfg["targets"] if not is_profile(t)]
 
     def label(target):
         # The id is derived from the name, so for most entries the two are the
@@ -871,18 +884,18 @@ def cmd_list(args):
         mark = "→" if active else " "
         browser = str(target.get("browser", "chromium"))
         line = f"  {mark} {label(target):<{width}}  {browser:<14}"
-        if is_client(target):
+        if is_profile(target):
             line += f"{swatch(target.get('color'))}"
         if not browser_binary(browser):
             line += "  (not installed)"
         return line.rstrip()
 
-    if clients:
-        print("Clients" if not systems else "Clients (isolated profiles)")
-        for t in clients:
+    if profiles:
+        print("Profiles" if not systems else "Profiles (isolated)")
+        for t in profiles:
             print(render(t))
     if systems:
-        if clients:
+        if profiles:
             print()
         print("System browsers")
         for t in systems:
@@ -943,7 +956,7 @@ def cmd_add(args):
         "wmClass": wm_class,
         "color": norm_color(args.color),
         "badge": badge,
-        "kind": "client",
+        "kind": KIND_PROFILE,
     }
     cfg["targets"].append(target)
     save_config(cfg)
@@ -968,7 +981,7 @@ def cmd_add_browser(args):
         die(f"{key} is not installed")
 
     for t in cfg["targets"]:
-        if not is_client(t) and t.get("browser") == key:
+        if not is_profile(t) and t.get("browser") == key:
             die(f"{BROWSERS[key]['name']} is already in the switcher as {t['id']!r}")
 
     target_id = unique_id(cfg, slugify(key))
@@ -976,7 +989,7 @@ def cmd_add_browser(args):
         "id": target_id,
         "name": args.name.strip() if args.name else BROWSERS[key]["name"],
         "browser": key,
-        "kind": "browser",
+        "kind": KIND_BROWSER,
     })
     save_config(cfg)
     if not active_id():
@@ -988,7 +1001,7 @@ def cmd_add_browser(args):
 def cmd_addable_browsers(args):
     """Installed browsers that are not already in the switcher as themselves."""
     cfg = load_config()
-    taken = {t.get("browser") for t in cfg["targets"] if not is_client(t)}
+    taken = {t.get("browser") for t in cfg["targets"] if not is_profile(t)}
     rows = [b for b in installed_browsers() if b["id"] not in taken]
     if args.json:
         print(json.dumps(rows, indent=2))
@@ -1047,7 +1060,7 @@ def cmd_remove(args):
     cfg["targets"] = [t for t in cfg["targets"] if t["id"] != target["id"]]
     save_config(cfg)
 
-    if is_client(target):
+    if is_profile(target):
         remove_quiet(os.path.join(APPS_DIR, desktop_filename(target)))
         for size in ICON_SIZES:
             remove_quiet(os.path.join(ICON_ROOT, f"{size}x{size}", "apps", f"{icon_name(target)}.png"))
@@ -1092,7 +1105,7 @@ def cmd_rename(args):
 def cmd_set(args):
     cfg = load_config()
     target = require_target(cfg, args.target)
-    if not is_client(target) and (args.color or args.icon or args.profile_dir or args.browser):
+    if not is_profile(target) and (args.color or args.icon or args.profile_dir or args.browser):
         die(f"{target['id']!r} is a system browser entry: it has no colour, logo "
             f"or profile of its own. Only --name applies.")
     changed = []
@@ -1134,7 +1147,7 @@ def cmd_reorder(args):
 def cmd_pick_icon(args):
     cfg = load_config()
     target = require_target(cfg, args.target)
-    if not is_client(target):
+    if not is_profile(target):
         die(f"{target['id']!r} is a system browser entry and uses the browser's own icon")
     exe = shutil.which("zenity")
     if not exe:
@@ -1155,7 +1168,7 @@ def cmd_pick_icon(args):
 def cmd_pick_color(args):
     cfg = load_config()
     target = require_target(cfg, args.target)
-    if not is_client(target):
+    if not is_profile(target):
         die(f"{target['id']!r} is a system browser entry and has no border colour")
     exe = shutil.which("zenity")
     if not exe:
@@ -1293,7 +1306,7 @@ def cmd_uninstall(args):
 
     remove_quiet(ROUTER_DESKTOP)
     for target in cfg["targets"]:
-        if not is_client(target):
+        if not is_profile(target):
             continue
         remove_quiet(os.path.join(APPS_DIR, desktop_filename(target)))
         for size in ICON_SIZES:
@@ -1312,7 +1325,12 @@ def cmd_uninstall(args):
 
 
 def cmd_apply(args):
-    apply_all(load_config())
+    cfg = load_config()
+    # load_config normalises the old kind label; writing it back here means a
+    # plain `apply` is enough to migrate a config, rather than waiting for the
+    # next edit to happen to touch it.
+    save_config(cfg)
+    apply_all(cfg)
 
 
 def cmd_doctor(args):
@@ -1340,7 +1358,7 @@ def cmd_doctor(args):
         binary = browser_binary(target.get("browser", "chromium"))
         check(f"target {target['id']}: browser installed", bool(binary),
               target.get("browser", "chromium"))
-        if not is_client(target):
+        if not is_profile(target):
             continue
         profile = target.get("profileDir")
         if profile:
@@ -1392,7 +1410,7 @@ def looks_like_url(value):
 def build_parser():
     parser = argparse.ArgumentParser(
         prog=APP,
-        description="Route opened URLs to a chosen browser or client profile.")
+        description="Route opened URLs to a chosen browser or browser profile.")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("open", help="open URLs in the active target (the router)")
@@ -1422,7 +1440,7 @@ def build_parser():
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_browsers)
 
-    p = sub.add_parser("add", help="create a new isolated client target")
+    p = sub.add_parser("add", help="create a new isolated profile")
     p.add_argument("--name", required=True)
     p.add_argument("--id", help="explicit slug (default: derived from the name)")
     p.add_argument("--browser", default="chromium")

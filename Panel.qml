@@ -49,7 +49,7 @@ Panel {
   //   tinted — the glyph itself in the client's colour
   //   icon   — the full-colour badged icon
   readonly property var barIconOptions: [
-    "No indicator", "Colour dot", "Coloured glyph", "Client icon"
+    "No indicator", "Colour dot", "Coloured glyph", "Profile icon"
   ]
   readonly property string barIconSetting: String(root.setting("barIcon", "Colour dot"))
 
@@ -67,6 +67,8 @@ Panel {
   ]
 
   readonly property var targets: switcher.targets
+  readonly property var profileTargets: targets.filter(function(t) { return isProfile(t) })
+  readonly property var systemTargets: targets.filter(function(t) { return !isProfile(t) })
   readonly property var active: switcher.activeTarget
 
   // Label -> mode, so the preview cells and the live bar agree on what each
@@ -82,17 +84,17 @@ Panel {
     return "dot"
   }
 
-  // Previews need a client to draw, otherwise three of the four options would
+  // Previews need a profile to draw, otherwise three of the four options would
   // look identical whenever a system browser happens to be active.
   readonly property var previewTarget: {
-    if (isClient(active)) return active
+    if (isProfile(active)) return active
     for (var i = 0; i < targets.length; i++) {
-      if (isClient(targets[i])) return targets[i]
+      if (isProfile(targets[i])) return targets[i]
     }
     return active
   }
   readonly property color previewColor: {
-    return isClient(previewTarget) ? targetColor(previewTarget) : Color.accent
+    return isProfile(previewTarget) ? targetColor(previewTarget) : Color.accent
   }
 
   function targetColor(target) {
@@ -105,8 +107,10 @@ Panel {
     return path.length > 0 ? "file://" + path : ""
   }
 
-  function isClient(target) {
-    return !target || String(target.kind || "client") !== "browser"
+  // Anything not explicitly a system browser is a profile — which also keeps
+  // configs written before the rename (kind: "client") reading correctly.
+  function isProfile(target) {
+    return !target || String(target.kind || "profile") !== "browser"
   }
 
   function initials(target) {
@@ -253,7 +257,7 @@ Panel {
               // A system browser has no colour of its own, so "tinted" falls
               // back to the bar's own foreground rather than to targetColor's
               // grey placeholder — which just read as a slightly different grey.
-              color: root.barIconMode === "tinted" && root.isClient(root.active)
+              color: root.barIconMode === "tinted" && root.isProfile(root.active)
                 ? root.targetColor(root.active)
                 : root.barForeground
               font.family: root.fontFamily
@@ -262,7 +266,7 @@ Panel {
 
             Rectangle {
               visible: root.barIconMode === "dot" && root.active !== null
-                && root.isClient(root.active)
+                && root.isProfile(root.active)
               anchors.right: parent.right
               anchors.bottom: parent.bottom
               width: Style.space(6)
@@ -404,7 +408,7 @@ Panel {
               width: parent.width
               wrapMode: Text.WordWrap
               text: "Links don't come here yet. Until Browser Switcher handles them, "
-                + "choosing a client changes nothing."
+                + "choosing an entry changes nothing."
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -468,7 +472,8 @@ Panel {
             visible: root.manageMode && !switcher.cliMissing
 
             PanelSectionHeader {
-              text: "CONFIGURED BROWSERS"
+              visible: root.profileTargets.length > 0
+              text: "PROFILES"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -479,10 +484,32 @@ Panel {
               spacing: Style.space(6)
 
               Repeater {
-                model: root.targets
-                ManageRow {
+                model: root.profileTargets
+                ProfileRow {
                   required property var modelData
                   width: manageColumn.width
+                  target: modelData
+                }
+              }
+            }
+
+            PanelSectionHeader {
+              visible: root.systemTargets.length > 0
+              text: "SYSTEM BROWSERS"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Column {
+              id: systemColumn
+              width: parent.width
+              spacing: Style.space(6)
+
+              Repeater {
+                model: root.systemTargets
+                SystemRow {
+                  required property var modelData
+                  width: systemColumn.width
                   target: modelData
                 }
               }
@@ -491,7 +518,7 @@ Panel {
             PanelSeparator { foreground: root.foreground }
 
             PanelSectionHeader {
-              text: "ADD AN ISOLATED CLIENT"
+              text: "ADD A PROFILE"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -510,7 +537,7 @@ Panel {
                 Layout.alignment: Qt.AlignVCenter
                 verticalPadding: 0
                 verticalAlignment: TextInput.AlignVCenter
-                placeholderText: "Client name"
+                placeholderText: "Profile name"
                 foreground: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
@@ -532,7 +559,7 @@ Panel {
               PanelActionButton {
                 id: addButton
                 iconText: "󰐕"
-                tooltipText: "Add client"
+                tooltipText: "Add profile"
                 foreground: root.foreground
                 fontFamily: root.fontFamily
                 size: root.controlH
@@ -551,7 +578,7 @@ Panel {
               textFormat: Text.PlainText
               width: parent.width
               wrapMode: Text.WordWrap
-              text: "Each client gets its own browser data directory, a badged icon and a coloured window border."
+              text: "A profile gets its own browser data directory — separate logins and history — plus a badged icon and a coloured window border."
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -699,7 +726,7 @@ Panel {
               textFormat: Text.PlainText
               width: parent.width
               wrapMode: Text.WordWrap
-              text: root.barIconSetting + " — how the bar shows which client is active. "
+              text: root.barIconSetting + " — how the bar shows which entry is active. "
                 + "Later options are clearer at a glance; earlier ones sit more quietly "
                 + "beside the other bar icons."
               color: root.dim
@@ -764,12 +791,14 @@ Panel {
         Text {
           textFormat: Text.PlainText
           Layout.fillWidth: true
+          // A system browser's name is already the browser's name, so
+          // repeating it underneath said nothing. A profile's subtitle earns
+          // its place: it is the only thing saying which browser it runs.
           text: {
             if (!switchRow.target) return ""
-            var parts = [String(switchRow.target.browser || "")]
-            if (switchRow.target.available === false) parts.push("not installed")
-            else if (!root.isClient(switchRow.target)) parts.push("system profile")
-            return parts.join(" · ")
+            if (switchRow.target.available === false) return "not installed"
+            return root.isProfile(switchRow.target)
+              ? String(switchRow.target.browser || "") : ""
           }
           color: switchRow.target && switchRow.target.available === false ? root.urgent : root.dim
           font.family: root.fontFamily
@@ -797,7 +826,7 @@ Panel {
     Text {
       textFormat: Text.PlainText
       width: emptyState.width
-      text: "No clients yet."
+      text: "Nothing to switch between yet."
       color: root.dim
       font.family: root.fontFamily
       font.pixelSize: Style.font.body
@@ -836,7 +865,7 @@ Panel {
           id: emptyLabel
           textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
-          text: "Add your first client"
+          text: "Add your first profile"
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
@@ -901,7 +930,12 @@ Panel {
       }
     }
   }
-  component ManageRow: Column {
+  // Profiles and system browsers get different rows on purpose. A profile is
+  // ours to configure — rename, colour, logo. A system browser is just a
+  // pointer at an existing install, so its name is the browser's name and is
+  // not ours to change; showing an edit box for it invited a rename that would
+  // only ever make the list less accurate.
+  component ProfileRow: Column {
     id: manageRow
     property var target: null
     readonly property bool confirming: manageRow.target && root.pendingDeleteId === manageRow.target.id
@@ -945,14 +979,10 @@ Panel {
       }
 
       // The swatch is the button, and it opens the picker *inside* the panel.
-      // A colour chooser is a dozen swatches and a hex field; spawning a
-      // separate window for that meant the panel dismissed itself, the dialog
-      // opened underneath it, and the first click went nowhere.
       Item {
         Layout.alignment: Qt.AlignVCenter
         implicitWidth: root.controlH
         implicitHeight: root.controlH
-        visible: root.isClient(manageRow.target)
 
         Rectangle {
           anchors.centerIn: parent
@@ -995,29 +1025,16 @@ Panel {
         foreground: root.foreground
         fontFamily: root.fontFamily
         size: root.controlH
-        visible: root.isClient(manageRow.target)
         Layout.alignment: Qt.AlignVCenter
         onClicked: if (manageRow.target) root.chooseIcon(manageRow.target.id)
       }
 
-      PanelActionButton {
-        iconText: "󰩹"
-        tooltipText: "Delete"
-        foreground: manageRow.confirming ? root.urgent : root.foreground
-        fontFamily: root.fontFamily
-        size: root.controlH
-        Layout.alignment: Qt.AlignVCenter
-        onClicked: {
-          if (!manageRow.target) return
-          root.pendingDeleteId = manageRow.confirming ? "" : manageRow.target.id
-        }
-      }
+      DeleteButton { target: manageRow.target; confirming: manageRow.confirming }
     }
 
-    // Colour editor, expanded in place under its own row. Everything here is
-    // in-panel, so picking a colour never costs the panel its focus.
+    // Colour editor, expanded in place under its own row.
     Column {
-      visible: manageRow.editingColor && root.isClient(manageRow.target)
+      visible: manageRow.editingColor
       width: manageRow.width
       spacing: Style.space(6)
       topPadding: Style.space(2)
@@ -1075,8 +1092,6 @@ Panel {
           font.pixelSize: Style.font.bodySmall
           onAccepted: applyHex()
 
-          // Accept what someone would actually paste: with or without the
-          // leading hash, in either case. The CLI normalises it again.
           function applyHex() {
             if (!manageRow.target) return
             var v = text.trim().replace(/^#/, "")
@@ -1093,8 +1108,6 @@ Panel {
           text: "Set"
           fontFamily: root.fontFamily
           foreground: root.foreground
-          // Bordered so it reads as the commit action for the field beside it
-          // rather than as a stray label.
           bordered: true
           Layout.preferredHeight: root.controlH
           Layout.alignment: Qt.AlignVCenter
@@ -1103,38 +1116,101 @@ Panel {
       }
     }
 
-    // Inline confirm rather than a modal: it keeps the destructive step one
-    // deliberate click away without covering the list it refers to.
-    RowLayout {
+    DeleteConfirm {
       width: manageRow.width
+      target: manageRow.target
       visible: manageRow.confirming
+      note: "Browsing data is kept."
+    }
+  }
+
+  component SystemRow: Column {
+    id: systemRow
+    property var target: null
+    readonly property bool confirming: systemRow.target && root.pendingDeleteId === systemRow.target.id
+
+    spacing: Style.space(4)
+
+    RowLayout {
+      width: systemRow.width
       spacing: Style.space(6)
+
+      TargetIcon {
+        target: systemRow.target
+        size: Style.space(18)
+        Layout.alignment: Qt.AlignVCenter
+      }
 
       Text {
         textFormat: Text.PlainText
         Layout.fillWidth: true
-        text: manageRow.target
-          ? "Delete " + manageRow.target.name + "? Browsing data is kept."
-          : ""
-        color: root.urgent
+        Layout.preferredHeight: root.controlH
+        Layout.alignment: Qt.AlignVCenter
+        verticalAlignment: Text.AlignVCenter
+        text: systemRow.target ? String(systemRow.target.name) : ""
+        color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
+        font.pixelSize: Style.font.bodySmall
+        elide: Text.ElideRight
       }
 
-      Button {
-        text: "Delete"
-        fontFamily: root.fontFamily
-        foreground: root.urgent
-        onClicked: if (manageRow.target) switcher.remove(manageRow.target.id)
-      }
+      DeleteButton { target: systemRow.target; confirming: systemRow.confirming }
+    }
 
-      Button {
-        text: "Cancel"
-        fontFamily: root.fontFamily
-        foreground: root.foreground
-        onClicked: root.pendingDeleteId = ""
-      }
+    DeleteConfirm {
+      width: systemRow.width
+      target: systemRow.target
+      visible: systemRow.confirming
+      note: "The browser itself is untouched."
+    }
+  }
+
+  component DeleteButton: PanelActionButton {
+    property var target: null
+    property bool confirming: false
+
+    iconText: "󰩹"
+    tooltipText: "Remove"
+    foreground: confirming ? root.urgent : root.foreground
+    fontFamily: root.fontFamily
+    size: root.controlH
+    Layout.alignment: Qt.AlignVCenter
+    onClicked: {
+      if (!target) return
+      root.pendingDeleteId = confirming ? "" : target.id
+    }
+  }
+
+  // Inline confirm rather than a modal: it keeps the destructive step one
+  // deliberate click away without covering the list it refers to.
+  component DeleteConfirm: RowLayout {
+    property var target: null
+    property string note: ""
+
+    spacing: Style.space(6)
+
+    Text {
+      textFormat: Text.PlainText
+      Layout.fillWidth: true
+      text: parent.target ? "Remove " + parent.target.name + "? " + parent.note : ""
+      color: root.urgent
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.WordWrap
+    }
+
+    Button {
+      text: "Remove"
+      fontFamily: root.fontFamily
+      foreground: root.urgent
+      onClicked: if (parent.target) switcher.remove(parent.target.id)
+    }
+
+    Button {
+      text: "Cancel"
+      fontFamily: root.fontFamily
+      foreground: root.foreground
+      onClicked: root.pendingDeleteId = ""
     }
   }
 }

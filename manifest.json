@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Sven Strothoff",
   "license": "MIT",
-  "description": "Switch which browser or client profile opened links go to, straight from the bar.",
+  "description": "Switch which browser or isolated browser profile opened links go to, straight from the bar.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Browser Switcher",
-    "description": "Pick the browser or client profile that links open in, and manage client configurations.",
+    "description": "Pick the browser or isolated profile that links open in, and manage those profiles.",
     "category": "Network",
     "allowMultiple": false,
     "defaultSection": "right",
@@ -32,10 +32,10 @@
           "No indicator",
           "Colour dot",
           "Coloured glyph",
-          "Client icon"
+          "Profile icon"
         ],
         "defaultValue": "Colour dot",
-        "description": "How the bar shows which client is active: nothing, a small client-colour dot beside the glyph, the glyph tinted with the client colour, or the full badged browser icon."
+        "description": "How the bar shows which entry is active: nothing, a small profile-colour dot beside the glyph, the glyph tinted with the profile colour, or the full badged browser icon."
       },
       {
         "key": "showLabel",

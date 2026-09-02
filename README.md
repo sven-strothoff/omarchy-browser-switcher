@@ -1,7 +1,7 @@
 # Browser Switcher
 
 An Omarchy shell plugin that puts a browser picker in the bar. Click it, pick a
-client, and every link you open from that point on lands in that browser's
+profile, and every link you open from that point on lands in that browser's
 isolated session.
 
 Built for the case where "which browser" really means "whose work am I doing
@@ -75,9 +75,9 @@ names carrying a "Do not edit" banner. Nothing it did not create is ever
 written or deleted, and `add` refuses outright to create a target whose window
 class would collide with a desktop entry it didn't write.
 
-## What a client gets
+## What a profile gets
 
-Adding a client called `acme` creates:
+Adding a profile called `acme` creates:
 
 | Thing | Where |
 |---|---|
@@ -90,8 +90,8 @@ Adding a client called `acme` creates:
 ### Icons are generated, not supplied
 
 You give it a logo — any PNG, JPG, SVG or WebP — and it does the compositing.
-The client logo is placed on a filled disc in the client's colour and composited
-onto the browser's own icon, rendered at all seven hicolor sizes. A client with
+The logo is placed on a filled disc in the profile's colour and composited
+onto the browser's own icon, rendered at all seven hicolor sizes. A profile with
 no logo yet still gets the coloured disc, so it stays identifiable at 16px.
 Requires ImageMagick; `install.sh` checks for it.
 
@@ -99,13 +99,13 @@ Requires ImageMagick; `install.sh` checks for it.
 browser-switcher set acme --icon ~/logos/acme.svg   # or: pick-icon, for a file dialog
 ```
 
-### Supported browsers, and how each gets a per-client window identity
+### Supported browsers, and how each gets a per-profile window identity
 
 Every browser Omarchy can install (`omarchy install browser …`), plus the
 preinstalled Chromium and the two extras Omarchy's own window rules already
 recognise.
 
-| Browser | Family | Profile isolation | Per-client app_id | Verified |
+| Browser | Family | Profile isolation | Per-profile app_id | Verified |
 |---|---|---|---|---|
 | Chromium | chromium | `--user-data-dir` | `--class` | yes, against `hyprctl` |
 | Chrome, Brave, Brave Origin, Edge, Vivaldi | chromium | `--user-data-dir` | `--class` | same mechanism, not installed here |
@@ -121,7 +121,7 @@ tested against a live Hyprland rather than inferred:
   X11 `WM_CLASS`. Launching Zen with `--class=zen-probe-class` still produced
   app_id `zen`. `MOZ_APP_REMOTINGNAME` is what works: the same launch with
   `MOZ_APP_REMOTINGNAME=zen-acme` produced app_id `zen-acme`. Without it every
-  Firefox-family client would share one app_id, so no per-client border colour
+  Firefox-family profile would share one app_id, so no per-profile border colour
   could match and `StartupWMClass` would be wrong for all of them.
 
 Two behaviours worth knowing, both measured rather than assumed:
@@ -130,7 +130,7 @@ Two behaviours worth knowing, both measured rather than assumed:
   profile directories run as fully independent instances even when they share a
   remoting name. The remoting name is about window identity, not about keeping
   sessions apart.
-- **Re-launching a running client hands it the URL** instead of starting a second
+- **Re-launching a running profile hands it the URL** instead of starting a second
   copy, which is what `open` relies on to drop a link into the session you
   already have open.
 
@@ -138,7 +138,7 @@ Generated Hyprland rules also mirror whichever of Omarchy's two parity rules
 applies: chromium-based browsers get `tile = true`, firefox-based ones don't.
 
 Because a custom app_id misses Omarchy's full-match browser regex, these rules
-are what keep a client window looking like a browser window rather than falling
+are what keep a profile window looking like a browser window rather than falling
 back to generic opacity.
 
 ### No launcher script to install
@@ -230,23 +230,24 @@ worth binding to a key:
 ```bash
 omarchy-shell browser-switcher toggle      # open/close the picker
 omarchy-shell browser-switcher configure   # open straight into the manage view
-omarchy-shell browser-switcher next        # cycle to the next client
+omarchy-shell browser-switcher next        # cycle to the next profile
 ```
 
 ## Using it
 
-**In the bar.** Left-click opens the picker; click a client to switch. Right-click
-cycles to the next client without opening anything — the "pop over to personal
+**In the bar.** Left-click opens the picker; click a profile to switch. Right-click
+cycles to the next profile without opening anything — the "pop over to personal
 for two minutes and come back" case shouldn't cost a menu. Middle-click opens a
-new window of the current client.
+new window of the current profile.
 
-The picker is just the list of clients and a gear in its header. Configuring is
+The picker is just the list of entries and a gear in its header. Configuring is
 rare next to switching, so it doesn't get a permanent row — except before the
-first client exists, when the panel is otherwise empty and adding one is the
+first profile exists, when the panel is otherwise empty and adding one is the
 only useful thing to do.
 
 **Configure** (the gear, or `c`) turns the same panel into the management view:
-rename in place, set a colour, choose a logo, delete, add a client.
+rename a profile in place, set a colour, choose a logo, remove an entry,
+and add a profile or a system browser.
 
 Picking a colour happens *inside* the panel — a swatch grid plus a hex field for
 an exact brand colour. That is not just a style choice: the panel is a
@@ -259,29 +260,35 @@ hands over cleanly, and reopens on the manage view when you're done.
 
 ### Two kinds of entry
 
-A **client** is an isolated session: its own browser data directory, a badged
+A **profile** is an isolated session: its own browser data directory, a badged
 icon, a coloured window border, its own desktop entry. That is the case this
 plugin exists for.
 
 A **system browser** is just a pointer at a browser as it is already installed —
 its normal profile, its own icon, no window colouring, nothing generated for it
-at all. Useful for "send this link to plain Firefox" without inventing a client
+at all. Useful for "send this link to plain Firefox" without inventing a profile
 for it.
 
+The two are listed separately everywhere, and a system browser's name is not
+editable: it is the browser's own name, so renaming it could only ever make the
+list less accurate. In the switcher its row carries no subtitle either — the
+name is already the browser's name, while a profile's subtitle is the one thing
+saying which browser it runs.
+
 ```bash
-browser-switcher add --name "Acme"     # an isolated client
+browser-switcher add --name "Acme"     # an isolated profile
 browser-switcher add-browser firefox   # plain Firefox, as itself
 browser-switcher addable-browsers      # installed browsers not yet listed
 ```
 
 Both appear in the switcher panel and both can be the active link destination.
-Colour and logo apply only to clients; asking for them on a system browser is
+Colour and logo apply only to profiles; asking for them on a system browser is
 refused rather than silently ignored.
 
 `list` groups the two and marks where links currently go:
 
 ```
-Clients (isolated profiles)
+Profiles (isolated)
     personal                      chromium      ■■ #DF8E1D
   → Acme Corp                       chromium      ■■ #D20F39
     Legacy                          firefox       ■■ #3F5FCF  (not installed)
@@ -298,22 +305,22 @@ only when stdout is a terminal and `NO_COLOR` is unset, so piping stays clean.
 
 ### Bar icon style
 
-The badged icon is the clearest signal of which client is live, but it is
+The badged icon is the clearest signal of which profile is live, but it is
 full-colour artwork sitting in a row of monochrome glyphs. The widget's
 `barIcon` setting picks how it presents:
 
 | Value | Look |
 |---|---|
-| `No indicator` | just the glyph — no sign of which client is active |
-| `Colour dot` (default) | bar-coloured glyph with a small client-colour dot |
-| `Coloured glyph` | the glyph itself tinted with the client's colour |
-| `Client icon` | the full-colour badged browser icon |
+| `No indicator` | just the glyph — no sign of which entry is active |
+| `Colour dot` (default) | bar-coloured glyph with a small profile-colour dot |
+| `Coloured glyph` | the glyph itself tinted with the profile's colour |
+| `Profile icon` | the full-colour badged browser icon |
 
 Pick it from the **Bar icon** row in the manage view: four cells, each drawing
 exactly what the bar will look like, so the choice is made by looking rather
 than by reading labels. It writes through `omarchy bar set`, so the change is
 immediate and persists in `shell.json`. Editing that file by hand works too:
-`{ "id": "sven.browser-switcher", "barIcon": "Client icon" }`.
+`{ "id": "sven.browser-switcher", "barIcon": "Profile icon" }`.
 
 `Colour dot` and `Coloured glyph` have nothing to show for a system browser,
 which has no colour of its own — those fall back to the bar's own foreground so
@@ -322,7 +329,7 @@ grey that just looks like a slightly wrong colour.
 
 Later options are clearer at a glance; earlier ones sit more quietly beside the
 other bar icons. Labels from earlier versions (`Theme`, `Client colour`,
-`Full colour`) are still understood.
+`Full colour`, `Client icon`) are still understood.
 
 **From the terminal**, which is the whole API:
 
@@ -345,7 +352,7 @@ o.bind("SUPER ALT",   "B", "exec", "omarchy-shell browser-switcher toggle")
 
 ## Bringing an existing hand-made setup across
 
-If you already built per-client browsers by hand, point a new client at the data
+If you already built per-profile browsers by hand, point a new profile at the data
 directory you already have and your logged-in sessions carry over:
 
 ```bash
