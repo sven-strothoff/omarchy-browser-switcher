@@ -108,13 +108,43 @@ Item {
   // optimistically patch local state — switching is fast enough that a
   // wrong-then-corrected UI would be more jarring than a brief wait.
 
+  // Actions queue rather than being dropped. Previously a second action
+  // arriving while one was in flight was silently discarded, so clicking a
+  // colour during a slower command simply did nothing — and the slower the
+  // command, the wider that window. Nothing here is long-running enough to
+  // want cancellation, so a plain FIFO is the whole story.
+  property var _queue: []
+
   function run(args, label) {
-    if (actionProcess.running) return
-    _actionLabel = label || (args.length > 0 ? args[0] : "")
+    var job = { args: args, label: label || (args.length > 0 ? args[0] : "") }
+    if (actionProcess.running) {
+      var q = _queue.slice()
+      q.push(job)
+      _queue = q
+      return
+    }
+    _start(job)
+  }
+
+  function _start(job) {
+    _actionLabel = job.label
+    currentAction = job.label
     _actionOut = ""
-    actionProcess.command = [cli].concat(args)
+    actionProcess.command = [cli].concat(job.args)
     actionProcess.running = true
   }
+
+  function _next() {
+    if (_queue.length === 0) { currentAction = ""; return }
+    var q = _queue.slice()
+    var job = q.shift()
+    _queue = q
+    _start(job)
+  }
+
+  // Which command is in flight, so a caller can show progress for its own
+  // action instead of for any action at all.
+  property string currentAction: ""
 
   function use(targetId) {
     var args = ["use", targetId, "--quiet"]
@@ -161,6 +191,7 @@ Item {
   function makeDefault() { run(["install", "--set-default"], "install") }
 
   readonly property bool busy: listProcess.running || actionProcess.running
+                              || _queue.length > 0
 
   // Bar appearance lives in the widget's own shell.json entry, not in the
   // switcher's config, so this goes through omarchy rather than our CLI. The
@@ -221,6 +252,7 @@ Item {
       if (exitCode !== 0) root.lastError = err
       else root.lastError = ""
       refreshDebounce.restart()
+      root._next()
     }
   }
 

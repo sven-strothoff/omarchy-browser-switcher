@@ -417,11 +417,14 @@ Panel {
             }
 
             Button {
-              text: switcher.busy ? "Setting up…" : "Make this the default browser"
+              // Progress for *this* action only: a colour change elsewhere in
+              // the panel should not make this button claim to be setting up.
+              readonly property bool working: switcher.currentAction === "install"
+              text: working ? "Setting up…" : "Make this the default browser"
               fontFamily: root.fontFamily
               foreground: root.foreground
               bordered: true
-              enabled: !switcher.busy
+              enabled: !working
               width: parent.width
               onClicked: switcher.makeDefault()
             }
