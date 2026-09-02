@@ -320,7 +320,7 @@ Pick it from the **Bar icon** row in the manage view: four cells, each drawing
 exactly what the bar will look like, so the choice is made by looking rather
 than by reading labels. It writes through `omarchy bar set`, so the change is
 immediate and persists in `shell.json`. Editing that file by hand works too:
-`{ "id": "sven.browser-switcher", "barIcon": "Profile icon" }`.
+`{ "id": "sven-strothoff.browser-switcher", "barIcon": "Profile icon" }`.
 
 `Colour dot` and `Coloured glyph` have nothing to show for a system browser,
 which has no colour of its own — those fall back to the bar's own foreground so
@@ -391,7 +391,7 @@ reuses the directory, and the logins come straight back.
 ## Backing out
 
 ```bash
-omarchy plugin disable sven.browser-switcher
+omarchy plugin disable sven-strothoff.browser-switcher
 browser-switcher uninstall     # restores your previous default browser
 ```
 

@@ -195,6 +195,7 @@ Item {
     pickerProcess.command = [cli].concat(args)
     pickerProcess.running = true
   }
+
   function reorder(targetId, direction) { run(["reorder", targetId, direction], "reorder") }
 
   function addBrowser(browser) { run(["add-browser", browser], "add-browser") }
@@ -207,17 +208,6 @@ Item {
 
   readonly property bool busy: listProcess.running || actionProcess.running
                               || _queue.length > 0
-
-  // Bar appearance lives in the widget's own shell.json entry, not in the
-  // switcher's config, so this goes through omarchy rather than our CLI. The
-  // shell reloads shell.json on write, which feeds `settings` straight back to
-  // the panel — no restart, and no local copy of the value to keep in sync.
-  function setBarIcon(value) {
-    if (barIconProcess.running) return
-    barIconProcess.command = ["omarchy", "bar", "set", "sven.browser-switcher",
-                              "barIcon", String(value)]
-    barIconProcess.running = true
-  }
 
   function add(name, browser, color) {
     var args = ["add", "--name", name]
@@ -268,18 +258,6 @@ Item {
       else root.lastError = ""
       refreshDebounce.restart()
       root._next()
-    }
-  }
-
-  Process {
-    id: barIconProcess
-    running: false
-    command: []
-    stderr: StdioCollector { id: barIconErr; waitForEnd: true }
-    onExited: function(exitCode) {
-      if (exitCode !== 0) {
-        root.lastError = String(barIconErr.text || "").split("\n")[0] || "Could not save bar icon style"
-      }
     }
   }
 

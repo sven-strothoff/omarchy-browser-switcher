@@ -14,7 +14,7 @@ import qs.Ui
 // next to switching between them.
 Panel {
   id: root
-  moduleName: "sven.browser-switcher"
+  moduleName: "sven-strothoff.browser-switcher"
   ipcTarget: "browser-switcher"
   manageIpc: false
 
@@ -99,6 +99,25 @@ Panel {
   }
   readonly property color previewColor: {
     return isProfile(previewTarget) ? targetColor(previewTarget) : Color.accent
+  }
+
+  // This widget's own setting, so it is written the way first-party widgets
+  // write theirs: applied locally for an immediate redraw, then persisted into
+  // our shell.json entry through the shell. No subprocess, and it degrades to
+  // a session-only preference if the widget is not in the layout — which also
+  // removes the last place the plugin id was hardcoded twice.
+  function persistSettings(values) {
+    var entry = { id: root.moduleName }
+    for (var existing in root.settings) {
+      if (existing !== "id") entry[existing] = root.settings[existing]
+    }
+    for (var key in values) entry[key] = values[key]
+
+    root.settings = entry
+    if (root.bar && root.bar.shell
+        && typeof root.bar.shell.updateEntryInline === "function") {
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
+    }
   }
 
   function targetColor(target) {
@@ -686,7 +705,7 @@ Panel {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: if (!previewCell.chosen) switcher.setBarIcon(previewCell.modelData)
+                    onClicked: if (!previewCell.chosen) root.persistSettings({ barIcon: previewCell.modelData })
 
                     PanelToolTip {
                       visible: parent.containsMouse

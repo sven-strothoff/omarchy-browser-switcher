@@ -13,7 +13,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ID="sven.browser-switcher"
+PLUGIN_ID="sven-strothoff.browser-switcher"
 BIN_DIR="${HOME}/.local/bin"
 PLUGIN_DIR="${HOME}/.config/omarchy/plugins/${PLUGIN_ID}"
 
