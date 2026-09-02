@@ -1050,25 +1050,30 @@ Panel {
           model: root.palette
 
           Rectangle {
+            id: swatchCell
             required property string modelData
             readonly property bool chosen:
               manageRow.target
-              && String(manageRow.target.color).toUpperCase() === modelData.toUpperCase()
+              && String(manageRow.target.color).toUpperCase()
+                 === swatchCell.modelData.toUpperCase()
 
             width: Style.space(22)
             height: Style.space(22)
             radius: Style.space(3)
-            color: modelData
-            border.width: chosen ? 2 : 0
+            color: swatchCell.modelData
+            border.width: swatchCell.chosen ? 2 : 0
             border.color: root.foreground
 
             MouseArea {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
+              // Reached through the delegate's own id rather than `parent`:
+              // the required property lives on the delegate, and going via
+              // `parent` from a nested item is the fragile way to ask for it.
               onClicked: {
                 if (!manageRow.target) return
-                switcher.setColor(manageRow.target.id, parent.modelData)
+                switcher.setColor(manageRow.target.id, swatchCell.modelData)
                 root.editingColorId = ""
               }
             }
