@@ -555,13 +555,12 @@ Panel {
                 onAccepted: addButton.commit()
               }
 
-              Dropdown {
+              Select {
                 id: addBrowser
                 Layout.preferredWidth: Style.space(110)
                 Layout.preferredHeight: root.controlH
                 Layout.alignment: Qt.AlignVCenter
                 rowHeight: root.controlH
-                showLabel: false
                 fontFamily: root.fontFamily
                 options: switcher.browserOptions
                 value: switcher.browserOptions.length > 0 ? switcher.browserOptions[0].value : "chromium"
@@ -615,13 +614,12 @@ Panel {
                 width: parent.width
                 spacing: Style.space(6)
 
-                Dropdown {
+                Select {
                   id: systemBrowser
                   Layout.fillWidth: true
                   Layout.preferredHeight: root.controlH
                   Layout.alignment: Qt.AlignVCenter
                   rowHeight: root.controlH
-                  showLabel: false
                   fontFamily: root.fontFamily
                   options: switcher.addableBrowsers
                   value: switcher.addableBrowsers.length > 0

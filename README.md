@@ -406,8 +406,21 @@ badge images. Browsing data is never deleted except by `remove --purge`.
 | `bin/browser-switcher` | the CLI, the router and the launcher; owns all state and file generation |
 | `Panel.qml` | bar widget and popup — switch view and manage view |
 | `Service.qml` | thin cache over `browser-switcher list --json`, refreshed by file watch |
+| `Select.qml` | dropdown that doesn't drift under the pointer (see below) |
 | `manifest.json` | Omarchy plugin declaration |
 | `install.sh` | wiring, all of it opt-in |
+
+`Select.qml` exists to work around a bug in the shipped `qs.Ui.Dropdown`: its
+popup budgets `Style.spacing.xxs` (2px) of vertical padding in `implicitHeight`
+while actually applying `Border.top + hairline` twice (4px), so the ListView
+viewport is permanently two pixels shorter than its own content. Because the
+row delegate assigns `currentIndex` on hover, ListView then scrolls to keep the
+current row visible — and pointing at the first or last option nudges the list.
+The deficit is constant, so it happens at any option count, however much room
+the popup has. Ours lays the rows out in a plain Column, so nothing tracks a
+current index for the view to chase and there is no mechanism left to scroll;
+the Flickable only becomes interactive if the list genuinely outgrows its cap.
+Worth reporting upstream.
 
 The CLI is the single source of truth. The panel shells out to it for every read
 and every mutation, so the bar, a terminal and a keybind cannot disagree about
