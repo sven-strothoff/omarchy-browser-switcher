@@ -235,10 +235,10 @@ omarchy-shell browser-switcher next        # cycle to the next profile
 
 ## Using it
 
-**In the bar.** Left-click opens the picker; click a profile to switch. Right-click
-cycles to the next profile without opening anything — the "pop over to personal
-for two minutes and come back" case shouldn't cost a menu. Middle-click opens a
-new window of the current profile.
+**In the bar.** Left-click opens the picker; click an entry to switch.
+Right-click opens a new window of whatever is currently selected — the usual
+follow-up to switching, and worth having without going through a menu.
+Middle-click cycles to the next entry.
 
 The picker is just the list of entries and a gear in its header. Configuring is
 rare next to switching, so it doesn't get a permanent row — except before the

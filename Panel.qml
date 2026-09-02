@@ -291,10 +291,12 @@ Panel {
     }
 
     onPressed: function(buttonCode) {
-      // Right-click cycles without opening anything: the "pop over to the
-      // other client for two minutes" case should not cost a menu.
-      if (buttonCode === Qt.RightButton) switcher.cycle(1)
-      else if (buttonCode === Qt.MiddleButton) { if (root.active) switcher.launch(root.active.id) }
+      // Right-click opens a window of whatever is selected — the common follow
+      // -up to switching, and the one action worth having without a menu.
+      // Cycling moves to middle-click; it is also on the `next` IPC method for
+      // anyone who would rather bind it to a key.
+      if (buttonCode === Qt.RightButton) { if (root.active) switcher.launch(root.active.id) }
+      else if (buttonCode === Qt.MiddleButton) switcher.cycle(1)
       else root.toggle()
     }
   }
