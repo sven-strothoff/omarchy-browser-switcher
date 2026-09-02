@@ -38,6 +38,15 @@ Item {
   property int maxVisibleRows: 8
   property bool hasCursor: false
 
+  // When the popup is open, a press on the trigger is an *outside* press as
+  // far as the popup is concerned, so its close-on-press-outside fires on the
+  // press and the release then reaches the trigger with the popup already
+  // closed. Reopening at that point makes clicking the control look inert.
+  // Remember when a close happened and swallow exactly the click that caused
+  // it — zeroing the mark straight after, so the very next click still opens.
+  property double _closedAt: 0
+  readonly property int _reopenGuardMs: 400
+
   readonly property bool popupOpen: popup.opened
   function open() { popup.open() }
   function close() { popup.close() }
@@ -125,7 +134,15 @@ Item {
       cursorShape: Qt.PointingHandCursor
       onClicked: {
         trigger.forceActiveFocus()
-        popup.opened ? popup.close() : popup.open()
+        if (popup.opened) {
+          popup.close()
+          return
+        }
+        if (Date.now() - root._closedAt < root._reopenGuardMs) {
+          root._closedAt = 0
+          return
+        }
+        popup.open()
       }
     }
 
@@ -146,6 +163,8 @@ Item {
       readonly property int rowsHeight: root.options.length * root.popupRowHeight
       readonly property int capHeight: root.maxVisibleRows * root.popupRowHeight
       implicitHeight: Math.min(rowsHeight, capHeight) + topPadding + bottomPadding
+
+      onClosed: root._closedAt = Date.now()
 
       background: BorderSurface {
         color: root.background

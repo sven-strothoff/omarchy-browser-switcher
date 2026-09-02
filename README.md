@@ -420,7 +420,14 @@ The deficit is constant, so it happens at any option count, however much room
 the popup has. Ours lays the rows out in a plain Column, so nothing tracks a
 current index for the view to chase and there is no mechanism left to scroll;
 the Flickable only becomes interactive if the list genuinely outgrows its cap.
-Worth reporting upstream.
+It also fixes click-to-dismiss. While the popup is open, a press on the trigger
+counts as an *outside* press, so the popup closes on the press and the release
+then reaches the trigger with the popup already closed — which reopens it, and
+the control looks inert. Ours notes when a close happened and swallows exactly
+the click that caused it, clearing the mark immediately so the next click still
+opens normally.
+
+Both worth reporting upstream.
 
 The CLI is the single source of truth. The panel shells out to it for every read
 and every mutation, so the bar, a terminal and a keybind cannot disagree about
