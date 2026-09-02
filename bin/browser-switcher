@@ -1066,9 +1066,21 @@ def cmd_remove(args):
             remove_quiet(os.path.join(ICON_ROOT, f"{size}x{size}", "apps", f"{icon_name(target)}.png"))
         remove_quiet(target.get("badge"))
 
-    if args.purge and target.get("profileDir", "").startswith(PROFILE_ROOT):
-        shutil.rmtree(target["profileDir"], ignore_errors=True)
-        info(f"deleted profile data at {target['profileDir']}")
+    profile_dir = target.get("profileDir", "")
+    if args.purge:
+        # Only ever delete inside our own profile root. A --profile-dir pointing
+        # somewhere else belongs to the user, not to us — say so rather than
+        # silently doing nothing, which is what this used to do.
+        if not profile_dir:
+            pass
+        elif not profile_dir.startswith(PROFILE_ROOT):
+            warn(f"not deleting {profile_dir}: it is outside {PROFILE_ROOT}, "
+                 f"so it was not created by this program. Remove it by hand if you want it gone.")
+        else:
+            shutil.rmtree(profile_dir, ignore_errors=True)
+            info(f"deleted browsing data at {profile_dir}")
+    kept_data = (not args.purge and is_profile(target)
+                 and profile_dir and os.path.isdir(profile_dir))
 
     if active_id() == target["id"]:
         remaining = cfg["targets"]
@@ -1079,6 +1091,14 @@ def cmd_remove(args):
 
     apply_all(cfg, quiet=True)
     info(f"removed {target['name']} ({target['id']})")
+    if kept_data:
+        # Keeping the data is the safe default, but silence about it is not:
+        # someone removing a profile may well assume its logins and history
+        # went with it. Note that --purge is no use now — the target is gone —
+        # so point at the directory itself.
+        info(f"browsing data kept at {profile_dir}")
+        info("that directory holds its logins and history; delete it yourself "
+             "if you want it gone")
 
 
 def remove_quiet(path):
@@ -1463,7 +1483,8 @@ def build_parser():
 
     p = sub.add_parser("remove", help="delete a target")
     p.add_argument("target")
-    p.add_argument("--purge", action="store_true", help="also delete its browser profile data")
+    p.add_argument("--purge", action="store_true",
+                   help="also delete its browsing data (logins, history) — irreversible")
     p.set_defaults(func=cmd_remove)
 
     p = sub.add_parser("rename", help="rename a target")

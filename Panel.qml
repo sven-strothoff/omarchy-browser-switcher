@@ -29,6 +29,10 @@ Panel {
   property int cursorIndex: 0
   property bool cursorActive: false
   property string pendingDeleteId: ""
+  // Opt-in, and reset every time a confirm opens or closes: deleting browsing
+  // data is the one irreversible thing this panel can do, so it must never be
+  // carried over from a previous row or a previous decision.
+  property bool pendingPurge: false
   property string editingColorId: ""
   property string statusMessage: ""
   // Set while an external file dialog is up, so the panel knows to come back
@@ -127,6 +131,7 @@ Panel {
   function setManageMode(on) {
     manageMode = on
     pendingDeleteId = ""
+    pendingPurge = false
     editingColorId = ""
     statusMessage = ""
     cursorIndex = 0
@@ -158,6 +163,7 @@ Panel {
       Qt.callLater(function() { keyCatcher.forceActiveFocus() })
     } else {
       pendingDeleteId = ""
+      pendingPurge = false
       editingColorId = ""
     }
   }
@@ -1130,7 +1136,7 @@ Panel {
       width: manageRow.width
       target: manageRow.target
       visible: manageRow.confirming
-      note: "Browsing data is kept."
+      note: "Its browsing data is kept unless you say otherwise."
     }
   }
 
@@ -1187,40 +1193,74 @@ Panel {
     Layout.alignment: Qt.AlignVCenter
     onClicked: {
       if (!target) return
+      root.pendingPurge = false
       root.pendingDeleteId = confirming ? "" : target.id
     }
   }
 
   // Inline confirm rather than a modal: it keeps the destructive step one
   // deliberate click away without covering the list it refers to.
-  component DeleteConfirm: RowLayout {
+  component DeleteConfirm: Column {
+    id: confirmBox
     property var target: null
     property string note: ""
+    // Only a profile owns browsing data; a system browser has nothing of ours
+    // to delete, so it never offers the option.
+    readonly property bool canPurge: root.isProfile(confirmBox.target)
 
     spacing: Style.space(6)
 
     Text {
       textFormat: Text.PlainText
-      Layout.fillWidth: true
-      text: parent.target ? "Remove " + parent.target.name + "? " + parent.note : ""
+      width: confirmBox.width
+      text: confirmBox.target
+        ? "Remove " + confirmBox.target.name + "? " + confirmBox.note : ""
       color: root.urgent
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
       wrapMode: Text.WordWrap
     }
 
-    Button {
-      text: "Remove"
+    // A toggle rather than a second button: an irreversible action should take
+    // a deliberate opt-in, not sit one misclick away from the safe one.
+    Toggle {
+      visible: confirmBox.canPurge
+      width: confirmBox.width
+      label: "Delete browsing data too"
+      description: "Logins, cookies and history for this profile. Cannot be undone."
+      checked: root.pendingPurge
+      foreground: root.foreground
+      accent: root.urgent
       fontFamily: root.fontFamily
-      foreground: root.urgent
-      onClicked: if (parent.target) switcher.remove(parent.target.id)
+      titleSize: Style.font.bodySmall
+      onClicked: root.pendingPurge = !root.pendingPurge
     }
 
-    Button {
-      text: "Cancel"
-      fontFamily: root.fontFamily
-      foreground: root.foreground
-      onClicked: root.pendingDeleteId = ""
+    RowLayout {
+      width: confirmBox.width
+      spacing: Style.space(6)
+
+      Item { Layout.fillWidth: true }
+
+      Button {
+        text: root.pendingPurge && confirmBox.canPurge ? "Remove and delete data" : "Remove"
+        fontFamily: root.fontFamily
+        foreground: root.urgent
+        bordered: true
+        onClicked: {
+          if (!confirmBox.target) return
+          switcher.remove(confirmBox.target.id,
+                          root.pendingPurge && confirmBox.canPurge)
+        }
+      }
+
+      Button {
+        text: "Cancel"
+        fontFamily: root.fontFamily
+        foreground: root.foreground
+        bordered: true
+        onClicked: { root.pendingPurge = false; root.pendingDeleteId = "" }
+      }
     }
   }
 }

@@ -339,7 +339,7 @@ browser-switcher use acme             # switch (id or name, either works)
 browser-switcher add --name "Acme" --color '#D20F39' --icon ~/logos/acme.png
 browser-switcher rename acme "Acme Corp"
 browser-switcher remove acme          # keeps the browsing data
-browser-switcher remove acme --purge  # deletes it too
+browser-switcher remove acme --purge  # deletes it too, irreversibly
 browser-switcher doctor
 ```
 
@@ -363,6 +363,30 @@ browser-switcher add --name acme --color '#179299' \
 Then delete your old desktop entry, icons and window rules. The plugin will not
 do that for you — it never touches files it didn't create — and `add` will
 refuse while an entry claiming the same window class is still in place.
+
+## Removing a profile, and its data
+
+Removing a profile deletes what this plugin generated — the desktop entry, the
+badged icons, the window rule — but **leaves the browsing data alone**. That
+directory holds real logins, cookies and history, and losing it to a misclick
+would be worse than leaving it behind.
+
+Both surfaces say so rather than leaving you to guess:
+
+- The panel's confirm reads *"Its browsing data is kept unless you say
+  otherwise"*, and offers a **Delete browsing data too** toggle. It is off
+  every time a confirm opens, and only when it is on does the button change to
+  *Remove and delete data*.
+- The CLI prints where the data was kept, and that the directory holds the
+  profile's logins and history.
+
+`--purge` deletes it at removal time. It only ever removes a directory under
+`~/.local/share/browser-switcher/profiles`; a profile pointed at a directory of
+your own with `--profile-dir` is reported rather than deleted, since that
+directory is not ours to remove.
+
+Data left behind is easy to reclaim: re-adding a profile with the same name
+reuses the directory, and the logins come straight back.
 
 ## Backing out
 

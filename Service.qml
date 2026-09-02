@@ -175,7 +175,11 @@ Item {
     Quickshell.execDetached([cli, "launch", targetId])
   }
   function rename(targetId, name) { run(["rename", targetId, name], "rename") }
-  function remove(targetId) { run(["remove", targetId], "remove") }
+  function remove(targetId, purge) {
+    var args = ["remove", targetId]
+    if (purge === true) args.push("--purge")
+    run(args, "remove")
+  }
   function setColor(targetId, hex) { run(["set", targetId, "--color", hex], "set-color") }
 
   // The file dialog is a normal toplevel window, while the panel is a
