@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "sven-strothoff.browser-switcher",
   "name": "Browser Switcher",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "author": "Sven Strothoff",
   "license": "MIT",
   "description": "Switch which browser or isolated browser profile opened links go to, straight from the bar.",
