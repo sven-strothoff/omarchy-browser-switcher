@@ -4,7 +4,7 @@ An Omarchy bar widget that decides **where your links open**. Click it, pick a
 profile, and every link you open from that point on lands in that browser's
 isolated session — separate cookies, separate logins, separate history.
 
-![The switcher open over two profile windows, each with its own border colour](docs/preview.png)
+![The switcher open over two profile windows, each with its own border colour](preview.png)
 
 Built for the case where "which browser" really means *whose work am I doing
 right now*: a browser for each client, one for yourself, and no more copying

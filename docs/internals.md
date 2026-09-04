@@ -105,7 +105,6 @@ is 21.3. A colour you can't distinguish is no use as an identity.
 | `Service.qml` | cache over `browser-switcher list --json`, refreshed by file watch |
 | `Select.qml` | dropdown that doesn't drift under the pointer (below) |
 | `manifest.json` | Omarchy plugin declaration |
-| `install.sh` | convenience for a git checkout; not needed for a plugin install |
 
 The CLI is the single source of truth. The panel shells out to it for every read
 and every mutation, so the bar, a terminal and a keybind cannot disagree.
@@ -148,9 +147,16 @@ Delete this file once both land upstream.
 
 ## Developing
 
-`install.sh` symlinks the checkout into `~/.config/omarchy/plugins/`, so edits
-land immediately — but the shell's plugin watcher does not follow the symlink and
-`rescanPlugins` won't reach through it either. After editing QML:
+To work on a checkout, symlink it in as the plugin and put the CLI on `PATH`:
+
+```bash
+ln -sfn "$PWD" ~/.config/omarchy/plugins/sven-strothoff.browser-switcher
+ln -sfn "$PWD/bin/browser-switcher" ~/.local/bin/browser-switcher
+omarchy plugin enable sven-strothoff.browser-switcher
+```
+
+Edits then land immediately — but the shell's plugin watcher does not follow the
+symlink and `rescanPlugins` won't reach through it either. After editing QML:
 
 ```bash
 omarchy restart shell
