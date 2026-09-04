@@ -37,10 +37,13 @@ same with `sed 's/^Exec=\([^ ]*\).*/\1/'`. Both discard the `open` subcommand.
 Under Hyprland this is the normal path, because `XDG_CURRENT_DESKTOP=Hyprland`
 matches no desktop `xdg-open` knows and it falls to its generic handling.
 
-So `browser-switcher <url>` — no subcommand — is dispatched as `open`. Detection
-is deliberately strict (a scheme, a path, or a bare `www.` host) so a mistyped
-subcommand still gets a normal argparse error instead of being handed to the
-browser. Unrecognised flags are forwarded to the browser, because
+So `browser-switcher <url>` — no subcommand — is dispatched as `open`, and so is
+`browser-switcher` with **no arguments at all**: that is how
+`omarchy-launch-browser` invokes the default browser when there is no URL to
+pass, which is what Omarchy's own open-browser keybind ends up calling. Detection
+is otherwise deliberately strict (a scheme, a path, or a bare `www.` host) so a
+mistyped subcommand still gets a normal argparse error instead of being handed to
+the browser. Unrecognised flags are forwarded to the browser, because
 `omarchy-launch-browser` rewrites `--private` into a browser-specific
 `--incognito` / `--private-window` on the way past.
 

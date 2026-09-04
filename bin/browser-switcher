@@ -1553,6 +1553,14 @@ def main():
     into a browser-specific `--incognito` / `--private-window` on the way past.
     """
     argv = list(sys.argv[1:])
+
+    # No arguments at all means "open the browser". That is how
+    # omarchy-launch-browser invokes the default browser when there is no URL
+    # to pass — it takes the first word of our Exec line and runs it bare — so
+    # this is what Omarchy's own open-browser keybind ends up calling.
+    if not argv:
+        argv = ["open"]
+
     commands = set(build_parser()._subparsers._group_actions[0].choices)
 
     if argv and argv[0] not in commands:
