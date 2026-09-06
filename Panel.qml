@@ -155,6 +155,17 @@ Panel {
     root.close()
   }
 
+  // Open a window of one entry without making it the link destination. The
+  // gesture matches the bar icon's right-click, which already means "open a
+  // window" — it just applies to the row under the pointer instead of to
+  // whatever happens to be active, which otherwise took a switch there and a
+  // switch back.
+  function openWindowFor(target) {
+    if (!target) return
+    switcher.launch(target.id)
+    root.close()
+  }
+
   function setManageMode(on) {
     manageMode = on
     pendingDeleteId = ""
@@ -177,6 +188,14 @@ Panel {
     // With nothing configured, Enter does the only useful thing.
     if (targets.length === 0) { setManageMode(true); return }
     if (cursorIndex >= 0 && cursorIndex < targets.length) switchTo(targets[cursorIndex])
+  }
+
+  // `o` mirrors right-click: open the row under the cursor without making it
+  // the destination. A letter rather than Shift+Enter because PanelKeyCatcher
+  // reports Enter without its modifiers, so the two cannot be told apart.
+  function openCursorWindow() {
+    if (manageMode || targets.length === 0) return
+    if (cursorIndex >= 0 && cursorIndex < targets.length) openWindowFor(targets[cursorIndex])
   }
 
   implicitWidth: button.implicitWidth
@@ -251,6 +270,7 @@ Panel {
     function next(): string { switcher.cycle(1); return "ok" }
     function previous(): string { switcher.cycle(-1); return "ok" }
     function use(id: string): string { switcher.use(id); return "ok" }
+    function launch(id: string): string { switcher.launch(id); return "ok" }
     function active(): string { return switcher.activeTarget ? switcher.activeTarget.id : "" }
     function cliPath(): string { return switcher.cli }
   }
@@ -363,6 +383,7 @@ Panel {
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "c" || t === "C") root.setManageMode(!root.manageMode)
+        else if (t === "o" || t === "O") root.openCursorWindow()
         else if (t === "r" || t === "R") switcher.refresh()
       }
 
@@ -789,11 +810,24 @@ Panel {
     implicitHeight: switchContent.implicitHeight + Style.spacing.rowPaddingX
 
     MouseArea {
+      id: switchMouse
       anchors.fill: parent
       hoverEnabled: true
+      acceptedButtons: Qt.LeftButton | Qt.RightButton
       cursorShape: Qt.PointingHandCursor
       onEntered: { root.cursorActive = true; root.cursorIndex = switchRow.rowIndex }
-      onClicked: root.switchTo(switchRow.target)
+      onClicked: function(mouse) {
+        if (mouse.button === Qt.RightButton) root.openWindowFor(switchRow.target)
+        else root.switchTo(switchRow.target)
+      }
+
+      // Right-click is not visible in a list, so the row says so on hover
+      // rather than the view carrying a permanent line of instructions.
+      PanelToolTip {
+        visible: switchMouse.containsMouse
+        text: "Right-click to open a window without switching"
+        fontFamily: root.fontFamily
+      }
     }
 
     RowLayout {
