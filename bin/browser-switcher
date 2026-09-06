@@ -51,9 +51,11 @@ BADGE_DIR = os.path.join(DATA_DIR, "badges")
 PROFILE_ROOT = os.path.join(DATA_DIR, "profiles")
 APPS_DIR = os.path.join(_xdg("XDG_DATA_HOME", "~/.local/share"), "applications")
 ICON_ROOT = os.path.join(_xdg("XDG_DATA_HOME", "~/.local/share"), "icons", "hicolor")
-# Not an XDG-configurable location, so unlike everything else here it is keyed
-# on HOME alone.
-BIN_DIR = os.path.join(HOME, ".local", "bin")
+# Honours XDG_BIN_HOME where it is set. That is partly convention and mostly
+# so this path can be redirected like every other one here: keyed on HOME
+# alone, a run pointed at a throwaway config could still reach — and remove —
+# the real symlink in ~/.local/bin.
+BIN_DIR = _xdg("XDG_BIN_HOME", "~/.local/bin")
 HYPR_DIR = os.path.join(_xdg("XDG_CONFIG_HOME", "~/.config"), "hypr")
 HYPR_MAIN = os.path.join(HYPR_DIR, "hyprland.lua")
 # Omarchy's stock hyprland.lua ends with `require("default.hypr.toggles")`,
@@ -87,18 +89,22 @@ BROWSERS = {
         "name": "Chromium",
         "commands": ["chromium", "chromium-browser"],
         "icon": "chromium",
+        "private": "--incognito",
         "family": "chromium",
     },
     "google-chrome": {
         "name": "Google Chrome",
         "commands": ["google-chrome-stable", "google-chrome"],
         "icon": "google-chrome",
+        "private": "--incognito",
         "family": "chromium",
     },
     "brave": {
         "name": "Brave",
         "commands": ["brave", "brave-browser"],
         "icon": "brave",
+        "private": "--incognito",
+        "private": "--incognito",
         "family": "chromium",
     },
     "brave-origin": {
@@ -113,33 +119,96 @@ BROWSERS = {
         "name": "Microsoft Edge",
         "commands": ["microsoft-edge-stable", "microsoft-edge"],
         "icon": "microsoft-edge",
+        "private": "--inprivate",
         "family": "chromium",
     },
     "vivaldi": {
         "name": "Vivaldi",
         "commands": ["vivaldi-stable", "vivaldi"],
         "icon": "vivaldi",
+        "private": "--incognito",
         "family": "chromium",
     },
     "firefox": {
         "name": "Firefox",
         "commands": ["firefox"],
         "icon": "firefox",
+        "private": "--private-window",
         "family": "firefox",
     },
     "zen": {
         "name": "Zen Browser",
         "commands": ["zen-browser", "zen"],
         "icon": "zen-browser",
+        "private": "--private-window",
         "family": "firefox",
     },
     "librewolf": {
         "name": "LibreWolf",
         "commands": ["librewolf"],
         "icon": "librewolf",
+        "private": "--private-window",
         "family": "firefox",
     },
 }
+
+
+# The only values an untrusted caller may pass alongside a URL. They are
+# recognised, never forwarded: the switch that reaches the browser is the one
+# that browser actually uses, taken from its own entry above. Anything else
+# beginning with "-" is refused rather than passed along, because the router is
+# a registered URL handler and its argv is reachable by whatever can invoke it.
+PRIVATE_REQUEST_ALIASES = frozenset({
+    "--private", "-private", "--incognito", "--inprivate", "--private-window",
+})
+
+# Schemes the router will hand to a browser. `javascript:` and `data:` are left
+# out deliberately — they turn a URL handler into script execution in the
+# browser's context, and nothing legitimate routes them through here.
+SAFE_URL_SCHEMES = frozenset({
+    "http", "https", "ftp", "ftps", "mailto", "file", "about",
+    "irc", "ircs", "news", "nntp", "webcal", "xmpp", "tel", "sms", "magnet",
+})
+
+SCHEME_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):")
+
+
+def validated_operand(value):
+    """Return `value` if it is something we are willing to hand a browser.
+
+    Operands arriving at `open` come from whatever invoked the desktop handler,
+    so they are treated strictly as URLs: never as options, and never with a
+    scheme that would let the browser execute the payload.
+    """
+    text = str(value)
+    if text.startswith("-"):
+        die(f"refusing to treat {text!r} as a URL: options are not accepted here")
+    match = SCHEME_RE.match(text)
+    if match:
+        scheme = match.group(1).lower()
+        if scheme not in SAFE_URL_SCHEMES:
+            die(f"refusing to open a {scheme}: URL")
+    return text
+
+
+def classify_open_arguments(values):
+    """Split an untrusted `open` invocation into (private, urls).
+
+    A narrow allowlist rather than a pass-through: the only recognised option
+    is a request for a private window, and it is translated per browser rather
+    than forwarded as written.
+    """
+    private = False
+    urls = []
+    for value in values:
+        if value in PRIVATE_REQUEST_ALIASES:
+            private = True
+        elif value.startswith("-"):
+            die(f"unsupported option {value!r}; `open` accepts URLs and "
+                f"a private-window request only")
+        else:
+            urls.append(validated_operand(value))
+    return private, urls
 
 
 def browser_binary(key):
@@ -163,7 +232,7 @@ def installed_browsers():
     return out
 
 
-def launch_argv(target, urls, new_window, extra_flags=()):
+def launch_argv(target, urls, new_window, private=False):
     """Build (argv, env) that opens `urls` in `target`.
 
     The two families set the window's app_id differently, and both paths below
@@ -203,8 +272,9 @@ def launch_argv(target, urls, new_window, extra_flags=()):
     if not is_profile(target):
         if new_window:
             argv.append("--new-window")
-        argv += list(extra_flags)
-        argv += list(urls)
+        if private:
+            argv.append(spec["private"])
+        argv += operand_arguments(urls)
         return argv, env
 
     profile = target.get("profileDir") or ""
@@ -221,10 +291,22 @@ def launch_argv(target, urls, new_window, extra_flags=()):
 
     if new_window:
         argv.append("--new-window")
+    if private:
+        argv.append(spec["private"])
 
-    argv += list(extra_flags)
-    argv += list(urls)
+    argv += operand_arguments(urls)
     return argv, env
+
+
+def operand_arguments(urls):
+    """URLs, behind an end-of-options delimiter.
+
+    Both families accept `--` and stop parsing options at it (verified against
+    Chromium and Zen), so even a URL that begins with a dash cannot be read as
+    a switch. Belt and braces: validated_operand() already refuses those.
+    """
+    operands = [validated_operand(u) for u in urls]
+    return (["--"] + operands) if operands else []
 
 
 def exec_browser(argv, env):
@@ -787,11 +869,15 @@ def cmd_open(args):
             binary = browser_binary(key)
             if binary:
                 warn("no targets configured — falling back to " + key)
-                fallback = [binary] + list(getattr(args, "browser_flags", ())) + list(args.urls)
+                spec = BROWSERS[key]
+                fallback = [binary]
+                if getattr(args, "private", False):
+                    fallback.append(spec["private"])
+                fallback += operand_arguments(args.urls)
                 os.execv(binary, fallback)
         die("no targets configured and no browser found")
     argv, env = launch_argv(target, args.urls, new_window=False,
-                            extra_flags=getattr(args, "browser_flags", ()))
+                            private=getattr(args, "private", False))
     exec_browser(argv, env)
 
 
@@ -1435,11 +1521,15 @@ def build_parser():
 
     p = sub.add_parser("open", help="open URLs in the active target (the router)")
     p.add_argument("urls", nargs="*")
+    p.add_argument("--private", action="store_true",
+                   help="open in a private window")
     p.set_defaults(func=cmd_open)
 
     p = sub.add_parser("launch", help="open a new window of a specific target")
     p.add_argument("target")
     p.add_argument("urls", nargs="*")
+    p.add_argument("--private", action="store_true",
+                   help="open in a private window")
     p.set_defaults(func=cmd_launch)
 
     p = sub.add_parser("use", help="make a target the active link destination")
@@ -1548,9 +1638,15 @@ def main():
     route a link clicked in the terminal actually travels.
 
     So a bare URL has to work, or every terminal link and every CLI tool that
-    honours $BROWSER breaks. Unrecognised *flags* are forwarded to the browser
-    rather than rejected, because omarchy-launch-browser rewrites `--private`
-    into a browser-specific `--incognito` / `--private-window` on the way past.
+    honours $BROWSER breaks.
+
+    What arrives here is untrusted: anything able to invoke the registered
+    handler controls this argv. `open` therefore takes URLs and one recognised
+    request — a private window, because omarchy-launch-browser rewrites
+    `--private` on the way past — and refuses every other option rather than
+    letting a caller choose the browser's switches. The request is translated
+    per browser rather than forwarded, so the flag that lands is one the target
+    actually understands.
     """
     argv = list(sys.argv[1:])
 
@@ -1571,13 +1667,17 @@ def main():
             argv = ["open"] + argv
 
     parser = build_parser()
-    if argv and argv[0] == "open":
-        args, extra = parser.parse_known_args(argv)
-        args.browser_flags = [a for a in extra if a.startswith("-")]
-        args.urls = list(args.urls) + [a for a in extra if not a.startswith("-")]
+
+    # The untrusted path does not go through parse_known_args, which would put
+    # caller-controlled strings back into the argv we build for the browser.
+    wants_help = any(a in ("-h", "--help") for a in argv[1:])
+    if argv and argv[0] == "open" and not wants_help:
+        private, urls = classify_open_arguments(argv[1:])
+        args = argparse.Namespace(func=cmd_open, urls=urls, private=private)
     else:
         args = parser.parse_args(argv)
-        args.browser_flags = []
+        if not hasattr(args, "private"):
+            args.private = False
     args.func(args)
 
 

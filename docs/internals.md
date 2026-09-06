@@ -51,6 +51,31 @@ the browser. Unrecognised flags are forwarded to the browser, because
 always sets it — so every `xdg-settings` call runs with `BROWSER` stripped, the
 same way Omarchy's own scripts do.
 
+### `open` is an untrusted boundary
+
+Whatever can invoke the registered handler controls this argv, so `open` treats
+its input strictly as URLs:
+
+- **Options are not passed through.** The only thing recognised is a request for
+  a private window (`--private`, `--incognito`, `--inprivate`,
+  `--private-window`), because `omarchy-launch-browser` rewrites `--private` on
+  the way past. Anything else beginning with `-` is refused, not forwarded.
+- **The request is translated, not relayed.** The switch that reaches the
+  browser comes from that browser's own entry in the registry, so a Firefox
+  profile gets `--private-window` even when the caller said `--incognito`.
+- **Schemes are checked.** `javascript:` and `data:` are refused outright; a
+  URL handler should not be a way to run script in the browser's context.
+- **Operands sit behind `--`.** Both families accept an end-of-options
+  delimiter and stop parsing switches at it — verified against Chromium and
+  Zen — so even a dash-leading operand cannot become a flag.
+
+Without this, a caller able to reach the handler could supply arbitrary browser
+switches — `--load-extension`, `--proxy-server`, `--remote-debugging-port`,
+`--user-data-dir` — crossing a boundary that is meant to carry only URLs.
+
+Administrative flags stay on the plugin's own subcommands, which are invoked by
+the panel and by hand, not by the desktop handler.
+
 ## Two browser families
 
 They differ in how a window gets a per-profile identity, and getting it wrong is
