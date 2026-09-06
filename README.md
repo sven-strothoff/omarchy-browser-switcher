@@ -71,6 +71,16 @@ see what is and isn't wired up.
 **In the bar.** Left-click opens the picker; click an entry to switch.
 Right-click opens a window of whatever is selected. Middle-click cycles.
 
+**Open one profile without switching to it.** Right-click an entry *in the
+picker* and it opens a window of that profile, leaving your link destination
+alone — for when you want a window for one client without making it the place
+links go. On the keyboard that's `o` on the highlighted entry. From a keybind
+or a script:
+
+```bash
+omarchy-shell browser-switcher launch acme   # a window for acme; nothing switches
+```
+
 **Configure** (the gear, or `c`) turns the same panel into the management view:
 rename a profile in place, pick a colour, choose a logo, remove an entry, add a
 profile or a system browser, and set how the bar shows which entry is active.
